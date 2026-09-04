@@ -124,6 +124,7 @@ turn on from the menu.
 
 ## Licence and scope
 
-MIT — see [LICENSE](LICENSE). This is unofficial, not affiliated with Amazon,
-and only useful on a device you have already jailbroken yourself. It writes to
-the system partition of your Kindle; you are choosing to do that.
+MIT — see [LICENSE](LICENSE), and [NOTICE.md](NOTICE.md) for the trademark and
+at-your-own-risk notice. This is unofficial, not affiliated with Amazon, and only
+useful on a device you have already jailbroken yourself. It writes to the system
+partition of your Kindle; you are choosing to do that.
