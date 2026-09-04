@@ -1,0 +1,202 @@
+{
+ "comment001": "KindleHub. Lives in KUAL rather than the book library on purpose:",
+ "comment002": "the content indexer classifies loose .sh files as personal documents",
+ "comment003": "and drops them out of a Books-filtered library view, which made them",
+ "comment004": "appear and then vanish one by one. KUAL reads this file directly and",
+ "comment005": "never consults the indexer.",
+ "comment006": "exitmenu is true throughout because every script draws its own",
+ "comment007": "full-screen output with fbink, and the KUAL menu would cover it.",
+ "comment008": "This file needs config.xml beside it. Without config.xml, KUAL does",
+ "comment009": "not read the extension at all and the menu never appears.",
+ "items": [
+  {
+   "name": "KindleHub",
+   "priority": -900,
+   "items": [
+    {
+     "name": "Install Everything",
+     "action": "./bin/KindleHubInstall.sh",
+     "priority": 0,
+     "exitmenu": true,
+     "refresh": false,
+     "status": false,
+     "internal": "status Installing KindleHub"
+    },
+    {
+     "name": "KindleHub Browser  (fullscreen)",
+     "action": "./bin/KindleHubBrowser.sh",
+     "priority": 1,
+     "exitmenu": true,
+     "refresh": false,
+     "status": false,
+     "internal": "status Starting the browser"
+    },
+    {
+     "name": "Browser Controls ON",
+     "action": "./bin/BrowserDaemon.sh",
+     "priority": 2,
+     "exitmenu": true,
+     "refresh": false,
+     "status": false,
+     "internal": "status Starting power-button controls"
+    },
+    {
+     "name": "Browser Controls OFF",
+     "action": "./bin/BrowserDaemonOff.sh",
+     "priority": 3,
+     "exitmenu": true,
+     "refresh": false,
+     "status": false,
+     "internal": "status Stopping power-button controls"
+    },
+    {
+     "name": "Health Check",
+     "action": "./bin/KindleHubDoctor.sh",
+     "priority": 4,
+     "exitmenu": true,
+     "refresh": false,
+     "status": false,
+     "internal": "status Checking KindleHub"
+    },
+    {
+     "name": "Fix WiFi Login",
+     "action": "./bin/WifiFix.sh",
+     "priority": 5,
+     "exitmenu": true,
+     "refresh": false,
+     "status": false,
+     "internal": "status Re-authenticating to WiFi"
+    },
+    {
+     "name": "Parts",
+     "priority": 50,
+     "items": [
+      {
+       "name": "Icons ON",
+       "action": "./bin/IconsInstall.sh",
+       "priority": 1,
+       "exitmenu": true,
+       "refresh": false,
+       "status": false,
+       "internal": "status Installing icons"
+      },
+      {
+       "name": "Fullscreen ON",
+       "action": "./bin/FullscreenInstall.sh",
+       "priority": 2,
+       "exitmenu": true,
+       "refresh": false,
+       "status": false,
+       "internal": "status Patching the window manager"
+      },
+      {
+       "name": "Restart Artwork ON",
+       "action": "./bin/CustomRestart.sh",
+       "priority": 3,
+       "exitmenu": true,
+       "refresh": false,
+       "status": false,
+       "internal": "status Theming the restart screen"
+      },
+      {
+       "name": "Use Our Restart",
+       "action": "./bin/RestartDivert.sh",
+       "priority": 4,
+       "exitmenu": true,
+       "refresh": false,
+       "status": false,
+       "internal": "status Diverting the restart command"
+      },
+      {
+       "name": "Swipe-Back OFF",
+       "action": "./bin/SwipeBackOff.sh",
+       "priority": 5,
+       "exitmenu": true,
+       "refresh": false,
+       "status": false,
+       "internal": "status Disabling overscroll history"
+      },
+      {
+       "name": "SSH ON",
+       "action": "./bin/SshOn.sh",
+       "priority": 6,
+       "exitmenu": true,
+       "refresh": false,
+       "status": false,
+       "internal": "status Starting SSH"
+      },
+      {
+       "name": "SSH OFF",
+       "action": "./bin/SshOff.sh",
+       "priority": 7,
+       "exitmenu": true,
+       "refresh": false,
+       "status": false,
+       "internal": "status Stopping SSH"
+      }
+     ]
+    },
+    {
+     "name": "Undo",
+     "priority": 90,
+     "items": [
+      {
+       "name": "Uninstall Everything",
+       "action": "./bin/KindleHubUninstall.sh",
+       "priority": 1,
+       "exitmenu": true,
+       "refresh": false,
+       "status": false,
+       "internal": "status Removing KindleHub"
+      },
+      {
+       "name": "Icons OFF",
+       "action": "./bin/IconsUndo.sh",
+       "priority": 2,
+       "exitmenu": true,
+       "refresh": false,
+       "status": false,
+       "internal": "status Restoring stock icons"
+      },
+      {
+       "name": "Fullscreen OFF",
+       "action": "./bin/FullscreenOff.sh",
+       "priority": 3,
+       "exitmenu": true,
+       "refresh": false,
+       "status": false,
+       "internal": "status Restoring the window manager"
+      },
+      {
+       "name": "Restart Artwork OFF",
+       "action": "./bin/CustomRestartUndo.sh",
+       "priority": 4,
+       "exitmenu": true,
+       "refresh": false,
+       "status": false,
+       "internal": "status Restoring the restart screen"
+      },
+      {
+       "name": "Amazon's Restart Back",
+       "action": "./bin/RestartDivertUndo.sh",
+       "priority": 5,
+       "exitmenu": true,
+       "refresh": false,
+       "status": false,
+       "internal": "status Restoring /sbin/reboot"
+      },
+      {
+       "name": "Swipe-Back ON",
+       "action": "./bin/SwipeBackOn.sh",
+       "priority": 6,
+       "exitmenu": true,
+       "refresh": false,
+       "status": false,
+       "internal": "status Restoring overscroll history"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
