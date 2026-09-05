@@ -27,7 +27,9 @@
 ##   means no browser at all. It deliberately does NOT touch
 ##   --content-shell-host-window-cord: that value must match the geometry the
 ##   window manager allocates, and changing it alone breaks the launch entirely.
-##   "Swipe-Back ON" restores the original.
+##   The guard compares it with what the device had, not with a fixed number,
+##   because it differs between panels. "Swipe-Back ON" restores the original.
+##   A firmware with no /usr/bin/browser (the older WebKit browser) is skipped.
 
 BR=/usr/bin/browser
 BAK=/mnt/us/kindlehub_theme_backup
@@ -52,7 +54,17 @@ main() {
     screen "KindleHub - disabling swipe-back" 2
 
     mount 2>/dev/null | grep -q " /mnt/us " || { log "ABORT eject the cable first"; screen "Eject the cable first" 4; return 1; }
-    [ -f "$BR" ] || { log "ABORT $BR missing"; return 1; }
+    ## Older firmware runs the WebKit browser (mesquite) and has no Chromium
+    ## launcher at /usr/bin/browser. There is no overscroll navigation to turn
+    ## off there, so this is a clean skip.
+    if [ ! -f "$BR" ]; then
+        log "SKIP no $BR on this firmware - its browser is not Chromium, nothing to change"
+        screen "No Chromium launcher - skipped" 4; return 0
+    fi
+    if ! grep -q -- '--enable-grayscale-mode' "$BR" 2>/dev/null; then
+        log "SKIP $BR has no --enable-grayscale-mode line to anchor on - left untouched"
+        screen "Launcher differs - skipped" 4; return 0
+    fi
     mkdir -p "$BAK" 2>/dev/null
 
     log "current md5: $(md5sum "$BR" | awk '{print $1}')"
@@ -74,11 +86,16 @@ main() {
         log "FAIL edited wrapper does not parse; original left in place"
         rm -f "$TMP"; screen "Edit did not parse - aborted" 4; return 1
     fi
-    ## Guard the one value that must never change.
-    if ! grep -q -- '--content-shell-host-window-cord=0,215' "$TMP" 2>/dev/null; then
-        log "FAIL the window cord changed - refusing (that breaks the launch)"
+    ## Guard the one value that must never change. It is 0,215 on a Paperwhite
+    ## 11 and something else on a different panel, so the rule is "unchanged
+    ## from what this device had", not a fixed number.
+    C0=$(grep -o -- '--content-shell-host-window-cord=[0-9,]*' "$BR" 2>/dev/null | head -1)
+    C1=$(grep -o -- '--content-shell-host-window-cord=[0-9,]*' "$TMP" 2>/dev/null | head -1)
+    if [ "$C0" != "$C1" ]; then
+        log "FAIL the window cord changed ('$C0' -> '$C1') - refusing (that breaks the launch)"
         rm -f "$TMP"; return 1
     fi
+    log "window cord unchanged: ${C0:-none present}"
 
     if mntroot rw >/dev/null 2>&1 && mount | grep ' / ' | grep -q '(rw'; then RW=1
     else log "FAIL could not remount /"; rm -f "$TMP"; return 1; fi

@@ -32,14 +32,60 @@ kh_require_ejected() {
     fi
     return 0
 }
-# The Lua patches are md5-matched to one build; refuse elsewhere rather than
-# writing a patch that does not belong.
-kh_require_fw() {
+# The build KindleHub was developed and verified on is 5.19.2 (Paperwhite 11).
+# Since 1.1.0 the firmware is NOT a gate: every part checks the exact file it
+# is about to change and the fullscreen patch is verified structurally on any
+# build. This only says whether the known-good md5s apply.
+kh_fw_verified() {
     fw=$(head -1 /etc/prettyversion.txt 2>/dev/null)
     case "$fw" in
         *"${1:-5.19.2}"*) return 0 ;;
-        *) kh_log "ABORT firmware '$fw' is not ${1:-5.19.2}"; kh_screen "Unsupported firmware" 4; return 1 ;;
+        *) return 1 ;;
     esac
+}
+# Kept for older callers; it now logs instead of refusing.
+kh_require_fw() {
+    kh_fw_verified "$@" && return 0
+    kh_log "NOTE firmware '$(head -1 /etc/prettyversion.txt 2>/dev/null)' is not the verified build ${1:-5.19.2}; continuing with per-file checks"
+    return 0
+}
+# Which /dev/input/eventN is the power button. /proc/bus/input/devices lists
+# every input device with its name, handlers and capability bitmaps; the power
+# button is the one whose KEY bitmap has bit 116 (KEY_POWER), with the name as
+# a fallback. Prints the path; falls back to event0, which is right on the
+# Paperwhite 11 (bd71828-pwrkey).
+kh_power_input() {
+    awk '
+      function hexval(c) { return index("0123456789abcdef", tolower(c)) - 1 }
+      function haskey(line, n,   w, nw, wl, bpw, idx, bit, word, nib, i) {
+        sub(/^B: KEY=/, "", line); nw = split(line, w, " ")
+        if (nw < 1) return 0
+        wl = 0; for (i = 1; i <= nw; i++) if (length(w[i]) > wl) wl = length(w[i])
+        bpw = wl * 4; if (bpw < 32) bpw = 32
+        idx = int(n / bpw); bit = n % bpw
+        if (idx >= nw) return 0
+        word = w[nw - idx]
+        while (length(word) < bpw / 4) word = "0" word
+        nib = substr(word, length(word) - int(bit / 4), 1)
+        return int(hexval(nib) / (2 ^ (bit % 4))) % 2
+      }
+      function emit(   e, s) {
+        if (h != "" && match(h, /event[0-9]+/)) {
+          e = substr(h, RSTART, RLENGTH); s = 0
+          if (name ~ /pwr|power/) s += 2
+          else if (name ~ /button|btn|gpio-keys|keypad|key/) s += 1
+          if (name ~ /touch|screen|elan|cyttsp|zforce|pixart|parade|accel|gyro|hall|cover|wacom|pen|stylus|magnet|light/) s = 0
+          if (pw) s += 4
+          if (s > best) { best = s; bestdev = e }
+        }
+        name = ""; h = ""; pw = 0
+      }
+      /^N: Name=/ { name = tolower($0) }
+      /^H: Handlers=/ { h = $0 }
+      /^B: KEY=/ { pw = haskey($0, 116) }
+      /^$/ { emit() }
+      END { emit(); if (bestdev != "") print "/dev/input/" bestdev; else print "/dev/input/event0" }
+    ' /proc/bus/input/devices 2>/dev/null
 }
 # / is ~94% full; refuse rather than half-write and corrupt something.
 kh_require_space() {

@@ -1,8 +1,9 @@
 # How it works
 
-Notes on the internals of a Paperwhite 11 on 5.19.2, and why each part is built
-the way it is. Useful if you want to change something, port it to another
-firmware, or understand why an obvious-looking approach was not taken.
+Notes on the internals of a Paperwhite 11 on 5.19.2 — the device this was
+built on — and why each part is built the way it is, plus what was done to make
+it run on other Kindles. Useful if you want to change something, verify it on
+another model, or understand why an obvious-looking approach was not taken.
 
 ---
 
@@ -82,11 +83,40 @@ Amazon's, marked proprietary, so this pack does not redistribute them. What it
 ships is `theme/wm/kh_patch.lua`: the inserted lines and the exact anchor each
 one goes after or before. `Fullscreen ON` runs it with KOReader's `luajit`
 against the module on the device, and every anchor must be found exactly once
-or it writes nothing. The shell then md5-checks the output against the result
-this was developed with (`3472a42f…` for the application layer, `60ec1f74…`
-for the dialog layer) and syntax-checks it, before anything reaches `/etc`. A
-different firmware fails the anchor check, the md5 check, or both, and the
-device is left untouched.
+or it writes nothing. The shell then syntax-checks the output and runs
+`kh_patch.lua verify`, which strips the inserted blocks back out and demands
+the remainder be byte-for-byte the input. On 5.19.2 it additionally md5-checks
+the output against the result this was developed with (`3472a42f…` for the
+application layer, `60ec1f74…` for the dialog layer). Only then does anything
+reach `/etc`.
+
+## Other Kindles
+
+The window manager has barely changed across the 5.x line. The same three
+anchors, the same `chrome_get_persistent_top_offset` with the same `T` / `TS`
+branches, and the same `blankBackground` special case are in the 5.11.1.1
+(Paperwhite 2) and 5.13.2 (Paperwhite 4) modules — the only difference found
+was four trailing spaces on the blank line after `log("application is
+normal")`, which is why that anchor is matched by line rather than by exact
+bytes. `tools/sandbox-test.sh` fetches those two firmwares' modules from public
+dumps and runs the whole installer against them on a computer, with `mntroot`,
+`mount`, `md5sum` and `eips` stubbed.
+
+What that proves is that the patch *applies* and is *inert when off*. Whether
+the browser actually fills the panel on a Paperwhite 4 is a thing only a
+Paperwhite 4 can show; the install log and `fullscreen.info` record what is
+needed to say so.
+
+Everything else that touches a device-specific file checks first:
+
+| Part | Assumption on the PW11 | What it does elsewhere |
+|---|---|---|
+| Power button | `event0`, `bd71828-pwrkey` | reads `/proc/bus/input/devices`; the device whose `KEY` bitmap has bit 116 (`KEY_POWER`) wins, then a *pwr/power* name, then a generic button device; touchscreens and sensors are excluded; logs the table and the choice |
+| Icons | `/app/KPPMainApp/res` exists | skips as a success if it does not (the pre-SVG UI) |
+| Restart art | `bg_reboot.png` is a 1236×1648 regular file | reads the PNG header of the device's file; skips on a size mismatch (naming the size) or a symlink (5.13 links it to `bg_default.png`) |
+| Our restart | art matches the panel | asks fbink for the panel size and scales the art if it differs |
+| Swipe-back | `/usr/bin/browser` with `--content-shell-host-window-cord=0,215` | skips if the launcher is missing (WebKit browser) or has no `--enable-grayscale-mode` anchor; guards the cord value as *unchanged*, not as `0,215` |
+| Backups | known md5s | records each backup's md5 beside it; Undo and Health Check verify against that; a backup from another firmware is refused |
 
 ## The Control Centre
 
@@ -101,13 +131,15 @@ which is deliberately left alone — so screenshots keep working.
 The button is a raw input device, not something lipc exposes:
 
 ```
-/dev/input/event0        bd71828-pwrkey
+/dev/input/event0        bd71828-pwrkey          (on the Paperwhite 11)
 16-byte input_event      type=0100  code=7400  value=01000000 on press
 ```
 
 The daemon reads it with `dd bs=16 count=1` under a `timeout`, counts presses
 inside a window, and acts on 2 or 3. While the browser is up it holds
-`preventScreenSaver` so a single press does not sleep the device.
+`preventScreenSaver` so a single press does not sleep the device. Which
+`eventN` to read is decided at start from `/proc/bus/input/devices` (see
+*Other Kindles* above), never assumed.
 
 **Cover detection is a magnet, not power.** The cover reports through
 `com.lab126.hal` as `magSensorClosed` / `magSensorOpened`. `powerd` never

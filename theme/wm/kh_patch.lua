@@ -4,21 +4,32 @@
 --
 --   luajit kh_patch.lua application <input.lua> <output.lua>
 --   luajit kh_patch.lua dialog      <input.lua> <output.lua>
+--   luajit kh_patch.lua verify application|dialog <original.lua> <patched.lua>
 --
 -- Every insertion must find its anchor EXACTLY once, or nothing is written and
 -- the exit code is 1. An insertion whose text is already present is skipped, so
 -- a module carrying the earlier (first-attempt) patch can be brought up to date.
--- The installer then md5-checks the output against the known-good result before
--- it goes anywhere near /etc, so a wrong result cannot be installed.
+--
+-- `verify` is the check that makes this safe on a firmware nobody has tested:
+-- it strips every KindleHub block back out of the patched file and demands the
+-- result be byte-for-byte the original. If that holds, the only thing that
+-- changed is the lines below -- and every one of those is wrapped in pcall, so
+-- a runtime surprise inside them cannot stop awesome from starting.
+--
+-- ANCHORS ACROSS FIRMWARE. These were checked against three generations of the
+-- module: 5.11.1.1 (Paperwhite 2), 5.13.2 (Paperwhite 4) and 5.19.2
+-- (Paperwhite 11). The code is the same; only the whitespace on the blank line
+-- after log("application is normal") differs (four spaces on the older two,
+-- nothing on 5.19.2). So that anchor is matched by LINE, not by exact bytes:
+-- the log line, then one blank-or-whitespace line. On 5.19.2 the output is
+-- still byte-identical to the known-good module (md5 3472a42f...).
 
 local INSERTIONS = {
   application = {
     {
-      where  = "after",
-      anchor = [=====[
-    log("application is normal")
-
-]=====],
+      -- after the log line AND the blank line that follows it
+      where  = "after_line_and_blank",
+      anchor = 'log("application is normal")',
       block  = [=====[
     pcall(function()
         if appWindow.params.ID == "com.lab126.browser" then
@@ -118,14 +129,71 @@ end
 
 local function fail(msg) io.stderr:write("kh_patch: " .. msg .. "\n"); os.exit(1) end
 
-local mode, inp, outp = arg[1], arg[2], arg[3]
-local list = mode and INSERTIONS[mode]
-if not list or not inp or not outp then
-  fail("usage: kh_patch.lua application|dialog <input> <output>")
+local function readfile(p)
+  local f = io.open(p, "rb"); if not f then fail("cannot read " .. p) end
+  local s = f:read("*a"); f:close(); return s
 end
 
-local f = io.open(inp, "rb"); if not f then fail("cannot read " .. inp) end
-local src = f:read("*a"); f:close()
+-- Where does insertion `ins` go in `src`? Returns the byte offset the block
+-- is inserted AT (the block goes before that offset), or nil + reason.
+local function locate(src, ins)
+  local n = count(src, ins.anchor)
+  if n ~= 1 then return nil, "anchor found " .. n .. " times (need exactly 1)" end
+  local a, b = string.find(src, ins.anchor, 1, true)
+  if ins.where == "before" then return a end
+  if ins.where == "after" then return b + 1 end
+  if ins.where == "after_line_and_blank" then
+    -- to the end of the anchor's line ...
+    local eol = string.find(src, "\n", b, true)
+    if not eol then return nil, "anchor is on the last line" end
+    -- ... then over exactly one line that is empty or whitespace-only
+    local nl2 = string.find(src, "\n", eol + 1, true)
+    if not nl2 then return nil, "no line after the anchor" end
+    local between = src:sub(eol + 1, nl2 - 1)
+    if not between:match("^[ \t\r]*$") then
+      return nil, "the line after the anchor is not blank"
+    end
+    return nl2 + 1
+  end
+  return nil, "unknown placement " .. tostring(ins.where)
+end
+
+local mode = arg[1]
+
+-- ---------------------------------------------------------------- verify
+if mode == "verify" then
+  local which, orig_p, patched_p = arg[2], arg[3], arg[4]
+  local list = which and INSERTIONS[which]
+  if not list or not orig_p or not patched_p then
+    fail("usage: kh_patch.lua verify application|dialog <original> <patched>")
+  end
+  local orig, patched = readfile(orig_p), readfile(patched_p)
+  local stripped, removed = patched, 0
+  for i, ins in ipairs(list) do
+    local n = count(stripped, ins.block)
+    if n > 1 then fail("verify: block " .. i .. " appears " .. n .. " times") end
+    if n == 1 then
+      local a, b = string.find(stripped, ins.block, 1, true)
+      stripped = stripped:sub(1, a - 1) .. stripped:sub(b + 1)
+      removed = removed + 1
+    end
+  end
+  if removed == 0 then fail("verify: no KindleHub block found in " .. patched_p) end
+  if stripped ~= orig then
+    fail("verify: patched file minus KindleHub's blocks is NOT the original - something else changed")
+  end
+  io.write(string.format("kh_patch: verify %s: %d block(s) removed, remainder is byte-for-byte the original\n", which, removed))
+  os.exit(0)
+end
+
+-- ------------------------------------------------------------------ patch
+local inp, outp = arg[2], arg[3]
+local list = mode and INSERTIONS[mode]
+if not list or not inp or not outp then
+  fail("usage: kh_patch.lua application|dialog <input> <output>  |  verify application|dialog <original> <patched>")
+end
+
+local src = readfile(inp)
 if src:find("\r\n", 1, true) then fail("input has CRLF line endings - not the device's file") end
 
 local applied, skipped = 0, 0
@@ -133,14 +201,9 @@ for i, ins in ipairs(list) do
   if count(src, ins.block) > 0 then
     skipped = skipped + 1
   else
-    local n = count(src, ins.anchor)
-    if n ~= 1 then fail("insertion " .. i .. ": anchor found " .. n .. " times (need exactly 1) - not the expected module") end
-    local a, b = string.find(src, ins.anchor, 1, true)
-    if ins.where == "after" then
-      src = src:sub(1, b) .. ins.block .. src:sub(b + 1)
-    else
-      src = src:sub(1, a - 1) .. ins.block .. src:sub(a)
-    end
+    local at, why = locate(src, ins)
+    if not at then fail("insertion " .. i .. ": " .. why .. " - not a module this patch understands") end
+    src = src:sub(1, at - 1) .. ins.block .. src:sub(at)
     applied = applied + 1
   end
 end

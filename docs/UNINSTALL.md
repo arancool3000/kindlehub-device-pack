@@ -56,9 +56,14 @@ Then eject and restart. The Lua patch is still installed after deleting
 ## Verifying you are back to stock
 
 Run **Health Check**, or over USB read `/mnt/us/kindlehub_uninstall.log`. The
-window manager should be back to Amazon's original:
+window manager should be back to Amazon's original — the md5 recorded when the
+backup was taken, in `kindlehub_theme_backup/lab126_application_layer.lua.orig.md5`
+(and the dialog layer's beside it). On a Paperwhite 11 / 5.19.2 those are:
 
 ```
 lab126_application_layer.lua   27ab0e2ec6519eb0428418493bd783f8
 lab126_dialog_layer.lua        ef4eb9bbf1899bab1a362184b1889717
 ```
+
+Either way, the file should contain no line mentioning KindleHub; the
+uninstall log says so explicitly.

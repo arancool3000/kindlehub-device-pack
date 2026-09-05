@@ -1,9 +1,16 @@
 # KindleHub
 
-A theming and behaviour pack for a **jailbroken Kindle Paperwhite 11 (PW5)** on
-firmware **5.19.2**. It gives you a genuinely fullscreen web browser with
-power-button gestures, 229 redrawn UI icons, a themed restart screen, and a few
-fixes for things the stock software gets wrong.
+A theming and behaviour pack for **jailbroken Kindles**. It gives you a
+genuinely fullscreen web browser with power-button gestures, 229 redrawn UI
+icons, a themed restart screen, and a few fixes for things the stock software
+gets wrong.
+
+It was developed and verified on a **Paperwhite 11 (PW5) on firmware 5.19.2**.
+On any other Kindle it still runs: every part checks the exact file it is about
+to change and skips, rather than guesses, if that file is not what it expects.
+The fullscreen patch is built on the device from your own window-manager module
+and checked structurally before anything is written. See
+[What works where](#what-works-where).
 
 Everything it changes is backed up first and reversible from the same menu.
 
@@ -13,7 +20,7 @@ Everything it changes is backed up first and reversible from the same menu.
 
 | | |
 |---|---|
-| **Fullscreen browser** | The title bar and search bar are gone — the page uses all 1236×1648. Not a "hide the bar" trick; the window manager is told the browser reserves no chrome, so the page is actually laid out full-height. |
+| **Fullscreen browser** | The title bar and search bar are gone — the page uses the whole panel (1236×1648 on a Paperwhite 11). Not a "hide the bar" trick; the window manager is told the browser reserves no chrome, so the page is actually laid out full-height. |
 | **Power-button gestures** | **2 taps** show or hide the browser bar. **3 taps** leave fullscreen and go Home. A single tap no longer sleeps the device while the browser is up. |
 | **Cover-only sleep** | While the browser is running, the device sleeps when you close the magnetic cover and at no other time. |
 | **229 UI icons** | Redrawn in one consistent line style across the home screen, library, reader menu, quick settings, browser chrome and settings. |
@@ -24,21 +31,40 @@ Everything it changes is backed up first and reversible from the same menu.
 
 ## Requirements
 
-- Kindle Paperwhite 11 / PW5 (`bellatrix`), **firmware 5.19.2**
-- Jailbroken, with **KUAL** installed and working
+- A **jailbroken Kindle** with **KUAL** installed and working
 - **KOReader** installed — its bundled `luajit` builds the window-manager patch
   from the modules already on your device and syntax-checks the result before
-  anything is written. The installer refuses to proceed without it
-
-The installer checks the firmware and **stops on anything other than 5.19.2**.
-This is not caution for its own sake: the two window-manager patches are matched
-to that build by md5, and applying them to a different one would either be
-rejected or break the window manager.
+  anything is written. The fullscreen step refuses to run without it
 
 Amazon's own Lua is not included in this pack. `theme/wm/kh_patch.lua` holds
 only the lines KindleHub adds and where they go; the installer applies them to
-the copies on your Kindle and refuses the result unless its md5 is the known-good
-one. See [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md).
+the copies on your Kindle and refuses the result unless it checks out. See
+[docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md).
+
+## What works where
+
+**Verified** means run on the device, looked at, and used daily. **Untested**
+means the code path exists and was checked against that firmware's files, but
+nobody has yet pressed the button on that hardware. If you do, please
+[report how it went](https://github.com/arancool3000/kindlehub-device-pack/issues)
+— the install log names your firmware and every md5 involved.
+
+| Part | Paperwhite 11 · 5.19.2 | Any other Kindle |
+|---|---|---|
+| Fullscreen browser | verified; result is byte-checked against the known-good module | patch built from *your* module and accepted only if every anchor is found exactly once, it parses, and stripping it back out gives your original byte for byte. The anchors are present in 5.11.1.1 (Paperwhite 2) and 5.13.2 (Paperwhite 4) firmware as well as 5.19.2 — untested on those devices |
+| Power-button gestures | verified | the power button's input device is found from `/proc/bus/input/devices` (KEY_POWER bit, then name), never assumed |
+| Cover-only sleep | verified | needs a magnetic cover sensor; harmless without one |
+| 229 UI icons | verified | only on firmware with the newer SVG-based UI (`/app/KPPMainApp/res`); older firmware is skipped with a note |
+| Restart artwork | verified | only if the device's screen art is 1236×1648 and not a symlink; otherwise skipped with a note saying what size to draw |
+| Our restart sequence | verified | generic; scales the art to the panel |
+| Swipe-back fix | verified | only for the Chromium browser (`/usr/bin/browser`); the older WebKit browser has nothing to fix and is skipped |
+| WiFi fix, SSH, crash-dump cleanup | verified | generic |
+
+The worst case on an untested firmware is that a part skips or that fullscreen
+changes nothing: everything KindleHub inserts into the window manager is
+wrapped in `pcall` and does nothing at all unless the flag file exists, so
+deleting that file over USB makes it inert, and `Fullscreen OFF` restores the
+original.
 
 ## Install
 
@@ -95,7 +121,9 @@ theme/                     payload -> /mnt/us/kindlehub_theme
                            window-manager modules, applied on the device),
                            the restart wrapper and our restart script
   system/                  restart artwork
-tools/                     regenerate the icons (needs python3 only)
+tools/                     regenerate the icons (needs python3 only), and
+                           sandbox-test.sh to exercise the installer on a
+                           computer against other firmwares' modules
 docs/                      install, uninstall, troubleshooting, internals
 ```
 
@@ -104,18 +132,20 @@ turn on from the menu.
 
 ## Safety
 
-- Every file replaced on the read-only root is **backed up first**, and the
-  backup is md5-verified before the write happens.
+- Every file replaced on the read-only root is **backed up first**, the backup
+  is md5-verified against the file it came from, and that md5 is **recorded
+  beside it** so Undo and Health Check can prove the backup is pristine on any
+  firmware.
 - A backup is only ever taken from a **pristine** file. If the original is
-  already patched, the install refuses rather than saving a patched file as the
-  "original" and making Undo useless.
+  already patched, or a backup from a different firmware is found, the install
+  refuses rather than saving the wrong thing as the "original".
 - `/` is remounted read-write only for the moment of the write, and put back
   read-only by an `EXIT` trap even if the script dies partway.
-- The patched Lua is **built on the device from its own modules**, accepted
-  only if it is byte-for-byte the known-good result, and **parsed by the
-  device's own luajit** before it is installed. A syntax error in a
-  window-manager module would leave you with no UI at all, so unverified Lua
-  is never written.
+- The patched Lua is **built on the device from its own modules**, **parsed by
+  the device's own luajit**, and **stripped back to the original and compared**
+  before it is installed. On the verified build it must also be byte-for-byte
+  the known-good result. A syntax error in a window-manager module would leave
+  you with no UI at all, so unverified Lua is never written.
 - **"Use Our Restart" is opt-in** and not part of Install Everything. It
   replaces `/sbin/reboot`. It is safe — it arms a watchdog before it stops
   anything, and never stops the framework it is running under — but it is the

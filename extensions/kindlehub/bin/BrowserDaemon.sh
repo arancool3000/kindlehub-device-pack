@@ -27,6 +27,16 @@
 ##   /dev/input/event0, 16-byte input_event structs. Power key press is
 ##   type=0100 code=7400 value=01000000 in the hexdump byte order.
 ##
+## WHICH EVENT DEVICE (other Kindles)
+##   event0 is the power button on a Paperwhite 11 (bd71828-pwrkey), but not
+##   necessarily elsewhere -- an Oasis has page-turn buttons on gpio-keys, and
+##   every model orders its devices differently. So the device is found from
+##   /proc/bus/input/devices: the one whose KEY bitmap has bit 116 (KEY_POWER)
+##   wins, then one whose name says pwr/power, then a generic button device,
+##   and touchscreens/sensors are never chosen. The choice and the full table
+##   are logged, so a wrong pick is visible rather than silent. event0 is the
+##   fallback.
+##
 ## SAFETY
 ##   * Never spins: every read is a blocking dd with a timeout, and both loops
 ##     sleep before retrying if a read returns instantly. A busy-wait here would
@@ -39,7 +49,7 @@
 FLAG=/mnt/us/kindlehub_browserd_on
 FSFLAG=/mnt/us/kindlehub_fullscreen
 LOG=/mnt/us/kindlehub_browserd.log
-DEV=/dev/input/event0
+DEV=/dev/input/event0            # replaced by find_power_input in main
 MAXSEC=86400
 GAP=1                      # seconds to wait for another tap in the same gesture
 DIAG=1                     # log raw events for the first DIAGSEC seconds
@@ -54,6 +64,44 @@ screen() {
     else eips 1 "${2:-1}" "$1" 2>/dev/null; fi
 }
 log() { echo "$(date '+%H:%M:%S') $*" >> "$LOG" 2>/dev/null; sync; }
+
+## Which /dev/input/eventN is the power button (see the header). Scores each
+## block of /proc/bus/input/devices: +4 if its KEY bitmap has KEY_POWER (116),
+## +2 for a pwr/power name, +1 for a generic button name, 0 for anything that
+## is a touchscreen or a sensor. Prints the best; event0 if nothing scores.
+find_power_input() {
+    awk '
+      function hexval(c) { return index("0123456789abcdef", tolower(c)) - 1 }
+      function haskey(line, n,   w, nw, wl, bpw, idx, bit, word, nib, i) {
+        sub(/^B: KEY=/, "", line); nw = split(line, w, " ")
+        if (nw < 1) return 0
+        wl = 0; for (i = 1; i <= nw; i++) if (length(w[i]) > wl) wl = length(w[i])
+        bpw = wl * 4; if (bpw < 32) bpw = 32
+        idx = int(n / bpw); bit = n % bpw
+        if (idx >= nw) return 0
+        word = w[nw - idx]
+        while (length(word) < bpw / 4) word = "0" word
+        nib = substr(word, length(word) - int(bit / 4), 1)
+        return int(hexval(nib) / (2 ^ (bit % 4))) % 2
+      }
+      function emit(   e, s) {
+        if (h != "" && match(h, /event[0-9]+/)) {
+          e = substr(h, RSTART, RLENGTH); s = 0
+          if (name ~ /pwr|power/) s += 2
+          else if (name ~ /button|btn|gpio-keys|keypad|key/) s += 1
+          if (name ~ /touch|screen|elan|cyttsp|zforce|pixart|parade|accel|gyro|hall|cover|wacom|pen|stylus|magnet|light/) s = 0
+          if (pw) s += 4
+          if (s > best) { best = s; bestdev = e }
+        }
+        name = ""; h = ""; pw = 0
+      }
+      /^N: Name=/ { name = tolower($0) }
+      /^H: Handlers=/ { h = $0 }
+      /^B: KEY=/ { pw = haskey($0, 116) }
+      /^$/ { emit() }
+      END { emit(); if (bestdev != "") print "/dev/input/" bestdev; else print "/dev/input/event0" }
+    ' /proc/bus/input/devices 2>/dev/null
+}
 
 cleanup() {
     lipc-set-prop com.lab126.powerd preventScreenSaver 0 2>/dev/null
@@ -255,6 +303,9 @@ button_loop() {
 
 main() {
     log "Browser controls starting (pid $$)"
+    D=$(find_power_input)
+    [ -n "$D" ] && [ -e "$D" ] && DEV="$D"
+    log "power button device: $DEV"
     [ -e "$DEV" ] || { log "ABORT no $DEV"; screen "No input device" 4; return 1; }
 
     ## Liveness is tested by looking for a live daemon PROCESS, never by a pid
@@ -268,8 +319,8 @@ main() {
     done
     ## Record the input devices once, so which eventN is the power button is a
     ## fact in the log rather than something inferred from an old note.
-    log "--- input devices ---"
-    cat /proc/bus/input/devices 2>/dev/null | grep -E "^N:|^H:|^B: EV=" >> "$LOG" 2>/dev/null
+    log "--- input devices (chosen: $DEV) ---"
+    cat /proc/bus/input/devices 2>/dev/null | grep -E "^N:|^H:|^B: EV=|^B: KEY=" >> "$LOG" 2>/dev/null
 
     touch "$FLAG"
     lipc-set-prop com.lab126.powerd preventScreenSaver 1 2>/dev/null

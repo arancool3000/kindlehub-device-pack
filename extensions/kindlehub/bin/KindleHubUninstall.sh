@@ -114,7 +114,14 @@ main() {
     echo
     echo "  / is: $(mount | grep ' / ' | grep -o '(r[ow]')"
     echo "  window manager: $(md5sum /etc/xdg/awesome/lab126_application_layer.lua 2>/dev/null | awk '{print $1}')"
-    echo "    (27ab0e2ec6519eb0428418493bd783f8 is Amazon's original)"
+    if [ -s "$BAK/lab126_application_layer.lua.orig.md5" ]; then
+        echo "    ($(head -1 "$BAK/lab126_application_layer.lua.orig.md5") is Amazon's original on this device)"
+    else
+        echo "    (27ab0e2ec6519eb0428418493bd783f8 is Amazon's original on a Paperwhite 11 / 5.19.2)"
+    fi
+    grep -q 'KindleHub' /etc/xdg/awesome/lab126_application_layer.lua 2>/dev/null \
+        && echo "    STILL PATCHED - run Undo > Fullscreen OFF again" \
+        || echo "    no KindleHub lines remain in it"
     echo "  /sbin/reboot:   $(head -1 /sbin/reboot 2>/dev/null | cut -c1-40)"
     echo
     echo "  Still on the device, on purpose:"

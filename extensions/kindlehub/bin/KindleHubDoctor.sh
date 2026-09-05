@@ -56,7 +56,12 @@ main() {
     echo; echo "=== 2. FIRMWARE ==="
     screen "2/8  firmware                       " 4
     FW=$(head -1 /etc/prettyversion.txt 2>/dev/null)
-    case "$FW" in *5.19.2*) ok "firmware $FW" ;; *) bad "firmware is '$FW' - the Lua patches target 5.19.2" ;; esac
+    case "$FW" in
+        *5.19.2*) ok "firmware $FW (the build KindleHub was verified on)" ;;
+        *) ok "firmware $FW - not the verified build (5.19.2 on a Paperwhite 11); each part checks its own file" ;;
+    esac
+    [ -x /mnt/us/koreader/luajit ] && ok "KOReader's luajit present" || warn "no /mnt/us/koreader/luajit - Fullscreen ON needs it to build and check the patch"
+    [ -f /etc/xdg/awesome/lab126_application_layer.lua ] && ok "awesome window manager present" || bad "no /etc/xdg/awesome/lab126_application_layer.lua - fullscreen cannot work on this firmware"
 
     echo; echo "=== 3. FULLSCREEN ==="
     screen "3/8  fullscreen                     " 4
@@ -66,15 +71,26 @@ main() {
     DM=$(md5sum "$D" 2>/dev/null | awk '{print $1}')
     grep -q 'KindleHub fullscreen' "$A" 2>/dev/null && ok "application layer patched ($AM)" || warn "application layer NOT patched - fullscreen will not work"
     grep -q 'KindleHub' "$D" 2>/dev/null && ok "dialog layer patched (control centre block)" || warn "dialog layer not patched - control centre still opens in fullscreen"
-    [ -f "$BAK/lab126_application_layer.lua.orig" ] && {
-        B=$(md5sum "$BAK/lab126_application_layer.lua.orig" | awk '{print $1}')
-        [ "$B" = "$ORIG_APP_MD5" ] && ok "application-layer backup is pristine" \
-                                   || bad "backup is NOT the pristine original ($B) - Undo would restore a patched file"
-    } || warn "no application-layer backup - Undo unavailable"
-    [ -f "$BAK/lab126_dialog_layer.lua.orig" ] && {
-        B=$(md5sum "$BAK/lab126_dialog_layer.lua.orig" | awk '{print $1}')
-        [ "$B" = "$ORIG_DLG_MD5" ] && ok "dialog-layer backup is pristine" || bad "dialog-layer backup is not pristine ($B)"
-    } || warn "no dialog-layer backup"
+    [ -f "$BAK/fullscreen.info" ] && echo "  $(grep -E '^(firmware|verified_build)=' "$BAK/fullscreen.info" | tr '\n' ' ')"
+    ## A backup is pristine if it carries no KindleHub line and matches the
+    ## md5 recorded when it was taken (1.1.0+). Backups from 1.0.x recorded
+    ## nothing, so the Paperwhite 11 / 5.19.2 values are the fallback.
+    check_backup() {  # check_backup <label> <backup> <fallback-md5>
+        [ -f "$2" ] || { warn "no $1 backup - Undo unavailable"; return; }
+        B=$(md5sum "$2" | awk '{print $1}')
+        if grep -q 'KindleHub' "$2" 2>/dev/null; then
+            bad "$1 backup is NOT pristine - it contains KindleHub lines, Undo would restore a patched file"
+        elif [ -s "$2.md5" ]; then
+            [ "$B" = "$(head -1 "$2.md5")" ] && ok "$1 backup is pristine (md5 $B, as recorded)" \
+                                              || bad "$1 backup md5 $B is not the recorded $(head -1 "$2.md5")"
+        elif [ "$B" = "$3" ]; then
+            ok "$1 backup is pristine ($B)"
+        else
+            warn "$1 backup has no recorded md5 and is not the 5.19.2 original ($B) - taken on another firmware?"
+        fi
+    }
+    check_backup "application-layer" "$BAK/lab126_application_layer.lua.orig" "$ORIG_APP_MD5"
+    check_backup "dialog-layer" "$BAK/lab126_dialog_layer.lua.orig" "$ORIG_DLG_MD5"
     [ -f /mnt/us/kindlehub_fullscreen ] && ok "fullscreen flag set (browser will be fullscreen)" \
                                         || ok "fullscreen flag clear (browser shows its bar)"
 
@@ -133,8 +149,12 @@ main() {
     screen "7/8  icons                          " 4
     N=$(find "$BASE/icons" -name '*.svg' 2>/dev/null | wc -l)
     ok "$N replacement icons staged"
-    I=$(grep -l 'KindleHub' /app/KPPMainApp/res/KPPUIChrome/*.svg 2>/dev/null | wc -l)
-    [ "${I:-0}" -gt 0 ] && ok "$I KindleHub icons installed on device" || warn "no KindleHub icons installed yet - run Install Icons"
+    if [ ! -d /app/KPPMainApp/res ]; then
+        ok "this firmware has no /app/KPPMainApp/res - its UI does not use SVG icons, so the icon part does not apply"
+    else
+        I=$(grep -l 'KindleHub' /app/KPPMainApp/res/KPPUIChrome/*.svg 2>/dev/null | wc -l)
+        [ "${I:-0}" -gt 0 ] && ok "$I KindleHub icons installed on device" || warn "no KindleHub icons installed yet - run Install Icons"
+    fi
 
     echo; echo "=== 8. HYGIENE ==="
     screen "8/8  hygiene                        " 4

@@ -54,7 +54,14 @@ main() {
 
     mount 2>/dev/null | grep -q " /mnt/us " || { log "ABORT - eject first"; screen "Eject the USB cable first" 4; return 1; }
     [ -d "$SRC" ] || { log "ABORT no $SRC"; screen "Icon files not found" 4; return 1; }
-    [ -d "$DST" ] || { log "ABORT no $DST"; return 1; }
+    ## Older firmware (before the React Native UI) has no /app/KPPMainApp/res
+    ## and draws its icons from jars instead. There is nothing for this step to
+    ## replace there, so it is a clean skip, not a failure.
+    if [ ! -d "$DST" ]; then
+        log "SKIP this firmware has no $DST - its UI does not use SVG icons, nothing to do"
+        screen "No SVG icons on this firmware - skipped" 4
+        return 0
+    fi
 
     N=$(find "$SRC" -name '*.svg' 2>/dev/null | wc -l)
     log "$N replacement icons staged"

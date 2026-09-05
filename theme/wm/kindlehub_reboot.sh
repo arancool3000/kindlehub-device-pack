@@ -53,9 +53,22 @@ else
 fi
 
 # ---- 1. our screen ----
+# The art is 1236x1648 (a Paperwhite 11 panel). On any other panel fbink is
+# asked to scale it to the screen (w=-1,h=-1) rather than crop it.
 if [ -n "$FBINK" ]; then
     "$FBINK" -q -f -c 2>/dev/null
-    [ -f "$ART" ] && "$FBINK" -q -g file="$ART" 2>/dev/null
+    if [ -f "$ART" ]; then
+        SW=$("$FBINK" -e 2>/dev/null | tr ';' '\n' | sed -n 's/^viewWidth=//p' | head -1)
+        SH=$("$FBINK" -e 2>/dev/null | tr ';' '\n' | sed -n 's/^viewHeight=//p' | head -1)
+        AW=$(printf '%d' "0x$(dd if="$ART" bs=1 skip=16 count=4 2>/dev/null | hexdump -v -e '4/1 "%02X"')" 2>/dev/null)
+        AH=$(printf '%d' "0x$(dd if="$ART" bs=1 skip=20 count=4 2>/dev/null | hexdump -v -e '4/1 "%02X"')" 2>/dev/null)
+        if [ -n "$SW" ] && [ -n "$AW" ] && { [ "$SW" != "$AW" ] || [ "$SH" != "$AH" ]; }; then
+            log "art is ${AW}x${AH}, panel is ${SW}x${SH} - scaling"
+            "$FBINK" -q -g file="$ART",w=-1,h=-1 2>/dev/null
+        else
+            "$FBINK" -q -g file="$ART" 2>/dev/null
+        fi
+    fi
 fi
 say 22 "restarting"
 bar 10

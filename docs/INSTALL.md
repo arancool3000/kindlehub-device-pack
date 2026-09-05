@@ -2,22 +2,24 @@
 
 ## Before you start
 
-Check all four. The installer checks the first two itself and stops if they are
-wrong, but the other two it cannot see.
+Check all three.
 
-1. **Firmware is 5.19.2.** Settings → Device Options → Device Info. Anything
-   else and the install stops — the window-manager patches are md5-matched to
-   this build.
-2. **The device is a Paperwhite 11 (PW5).** Other Kindles have a different
-   screen size and a different window manager layout.
-3. **KUAL works.** Open it before you start. If it says *"application error"*,
+1. **KUAL works.** Open it before you start. If it says *"application error"*,
    the per-boot unsigned-app patch has not run this boot — run your jailbreak's
    hotfix and open KUAL again.
-4. **KOReader is installed.** The installer uses its `luajit` at
+2. **KOReader is installed.** The installer uses its `luajit` at
    `/mnt/us/koreader/luajit` to build the patched window-manager modules from
    the ones on your device, and to syntax-check the result before writing it.
    Without it the fullscreen step refuses to run, because a Lua syntax error
    in the window manager means no UI at all.
+3. **Know what to expect on your model.** KindleHub was verified on a
+   Paperwhite 11 (PW5) on firmware 5.19.2. On any other Kindle the installer
+   still runs, logs your firmware and device, and each part checks the file it
+   is about to change: the fullscreen patch is built from your own module and
+   verified structurally, and parts that do not apply to your firmware (SVG
+   icons on the older UI, the swipe-back fix on the WebKit browser, restart art
+   on a different panel size) skip with a note in the log. The README's
+   *What works where* table has the detail.
 
 ## Copying it across
 
@@ -63,12 +65,18 @@ It takes about a minute and shows its progress on screen. Six steps:
 1. **Crash dumps** — deletes the `fastmetrics` crash files and indexer dumps
    from your documents folder.
 2. **Icons** — 229 SVGs into `/app/KPPMainApp/res`. Only names that already
-   exist are replaced; nothing new is created.
+   exist are replaced; nothing new is created. Firmware without that folder
+   (the older, non-SVG UI) is skipped.
 3. **Fullscreen** — the two window-manager Lua modules, patched in place from
-   your device's own copies and md5-verified before they are written.
-4. **Restart artwork** — your artwork into `/usr/share/blanket/shutdown`.
-5. **Browser controls** — starts the power-button and cover daemon.
+   your device's own copies. Parsed with the device's luajit and stripped back
+   to the original for comparison before they are written; on 5.19.2 the
+   result must also be byte-for-byte the known-good module.
+4. **Restart artwork** — your artwork into `/usr/share/blanket/shutdown`, if
+   the device's screen art is the same size (1236×1648) and not a symlink.
+5. **Browser controls** — starts the power-button and cover daemon. The power
+   button's input device is found from `/proc/bus/input/devices`.
 6. **Swipe-back fix** — two Chromium flags added to `/usr/bin/browser`.
+   Firmware with the older WebKit browser has no such file and is skipped.
 
 Then **restart**. The icons are cached by the UI and the window manager only
 reloads its Lua at startup, so nothing looks different until you do.

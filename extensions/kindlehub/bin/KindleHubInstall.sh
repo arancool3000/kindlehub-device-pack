@@ -29,9 +29,11 @@
 ##   there could not be undone if it misbehaved.
 ##
 ## REQUIREMENTS
-##   Kindle Paperwhite 11 (PW5) on firmware 5.19.2, jailbroken, with KUAL.
-##   It checks the firmware and refuses on anything else, because the Lua
-##   patches are matched to this build by md5.
+##   A jailbroken Kindle with KUAL, and KOReader for its luajit. It was
+##   developed and verified on a Paperwhite 11 (PW5) on firmware 5.19.2. On
+##   any other Kindle it still runs: every part checks the exact file it is
+##   about to change and skips, rather than guesses, if that file is not what
+##   it expects. The firmware is logged, not gated on.
 
 BASE=/mnt/us/kindlehub_theme
 BIN=/mnt/us/extensions/kindlehub/bin
@@ -87,14 +89,21 @@ main() {
     ## ---- preflight ----
     mount 2>/dev/null | grep -q " /mnt/us " || { log "ABORT eject the USB cable first"; screen "Eject the cable first" 6; return 1; }
     FW=$(head -1 /etc/prettyversion.txt 2>/dev/null)
+    MODEL=$(tr -d '\0' < /proc/device-tree/model 2>/dev/null)
+    [ -n "$MODEL" ] || MODEL=$(grep -m1 '^Hardware' /proc/cpuinfo 2>/dev/null | cut -d: -f2 | sed 's/^ *//')
     log "firmware: $FW"
+    log "device  : ${MODEL:-unknown} (serial prefix $(cut -c1-4 /proc/usid 2>/dev/null))"
+    log "panel   : $(eips -i 2>/dev/null | grep -m1 -i -E 'xres|width' | tr -s ' ')"
     case "$FW" in
-        *5.19.2*) log "firmware supported" ;;
-        *) log "ABORT this build targets 5.19.2 only"
-           log "      the window-manager patches are md5-matched to that build"
-           screen "Unsupported firmware - see log" 6; return 1 ;;
+        *5.19.2*) log "firmware: the build KindleHub was developed and verified on" ;;
+        *) log "firmware: NOT the build KindleHub was verified on (Paperwhite 11, 5.19.2)"
+           log "          each part checks the file it is about to change and skips if it is"
+           log "          not what it expects; the fullscreen patch is built from your own"
+           log "          window-manager module and checked structurally before it is written."
+           log "          Please report how it went: github.com/arancool3000/kindlehub-device-pack" ;;
     esac
     [ -d "$BASE" ] || { log "ABORT $BASE missing - copy the theme folder to your Kindle"; screen "Theme files missing" 6; return 1; }
+    [ -x /mnt/us/koreader/luajit ] || log "NOTE KOReader's luajit not found - the fullscreen step will refuse without it"
 
     ## The 229 icons ship as one archive so the release folder stays small. If
     ## you copied the folder by hand rather than with copy-to-kindle.sh, they
@@ -159,7 +168,7 @@ main() {
     echo
     echo "  Installed:"
     echo "    icons        $(find "$BASE/icons" -name '*.svg' 2>/dev/null | wc -l) SVGs"
-    echo "    fullscreen   $([ -f /etc/xdg/awesome/lab126_application_layer.lua ] && md5sum /etc/xdg/awesome/lab126_application_layer.lua | awk '{print $1}')"
+    echo "    fullscreen   $(grep -q 'KindleHub fullscreen' /etc/xdg/awesome/lab126_application_layer.lua 2>/dev/null && echo patched || echo 'not patched') ($(md5sum /etc/xdg/awesome/lab126_application_layer.lua 2>/dev/null | awk '{print $1}'))"
     echo "    controls     $([ -f /mnt/us/kindlehub_browserd_on ] && echo running || echo 'not running')"
     echo "    swipe-back   $(grep -c 'overscroll-history-navigation' /usr/bin/browser 2>/dev/null) flag(s) in /usr/bin/browser"
     echo "    backups      $(ls "$BAK" 2>/dev/null | wc -l) files in $BAK"

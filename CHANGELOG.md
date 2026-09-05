@@ -1,5 +1,46 @@
 # Changelog
 
+## 1.1.0
+
+**Runs on any jailbroken Kindle, not only a Paperwhite 11 on 5.19.2.** The
+firmware is now logged rather than gated on, and every part checks the exact
+file it is about to change and skips, with a note, if it is not what it
+expects.
+
+**Fullscreen**
+- `kh_patch.lua` matches its first anchor by line rather than by exact bytes:
+  the blank line after `log("application is normal")` carries four spaces on
+  5.11 and 5.13 firmware and nothing on 5.19.2. On 5.19.2 the output is still
+  byte-identical to the known-good module
+- New `kh_patch.lua verify` mode strips KindleHub's blocks back out of the
+  patched module and demands the remainder be byte-for-byte the original. The
+  installer runs it on every firmware; on the verified build it also keeps the
+  md5 gate
+- The anchors were checked against 5.11.1.1 (Paperwhite 2) and 5.13.2
+  (Paperwhite 4) firmware dumps as well as 5.19.2; `tools/sandbox-test.sh`
+  reproduces that check on a computer
+- The backup's md5 is recorded beside it (`*.orig.md5`) and a
+  `fullscreen.info` file records firmware and md5s, so `Fullscreen OFF` and
+  Health Check verify against what *this* device had. A backup that belongs
+  to a different firmware is refused with instructions, never restored
+- A module that already carries the KindleHub marker is treated as installed
+  whatever its md5
+
+**Other parts**
+- Browser controls find the power button from `/proc/bus/input/devices`
+  (KEY_POWER bit, then the device name) instead of assuming `event0`; the
+  choice and the whole table are logged
+- Restart artwork compares PNG dimensions with the device's own screen art
+  and skips symlinked screens (5.13 links `bg_reboot.png` to
+  `bg_default.png`), so nothing is cropped and nothing shared is overwritten;
+  our restart sequence scales the art to the panel
+- Swipe-back fix guards the browser's window-cord value as "unchanged from
+  what this device had" rather than a fixed `0,215`, and skips cleanly on
+  firmware with the older WebKit browser
+- Icons skip cleanly, as a success, on firmware without the SVG-based UI
+- Health Check reports the firmware as information, checks backups against
+  their recorded md5s, and knows which parts do not apply to this firmware
+
 ## 1.0.1
 
 **Amazon's Lua is no longer shipped.** The two window-manager modules are

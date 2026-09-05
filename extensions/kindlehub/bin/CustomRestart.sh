@@ -19,8 +19,10 @@
 ## WHAT IT DOES
 ##   Lists what blanket actually has, then replaces the reboot screen (and any
 ##   other shutdown screen we ship art for) with the KindleHub version. Only
-##   files that ALREADY EXIST are overwritten, dimensions are checked first, and
-##   every original is backed up. "Restart Artwork OFF" puts them all back.
+##   files that ALREADY EXIST are overwritten, symlinked screens are left
+##   alone, the PNG dimensions are compared first (the art is 1236x1648, a
+##   Paperwhite 11 panel; a different panel is skipped with a note), and every
+##   original is backed up. "Restart Artwork OFF" puts them all back.
 ##
 ##   It does not touch shutdown.conf or /sbin/reboot -- no change to how the
 ##   device restarts, only to what it shows.
@@ -46,6 +48,22 @@ restore_ro() {
         sync; mntroot ro >/dev/null 2>&1
         mount | grep ' / ' | grep -q '(ro' && RW=0; sync
     fi
+}
+
+## png_dims <file> -- prints WIDTHxHEIGHT from the PNG header, or nothing if
+## the file is not a PNG. Read straight from the IHDR chunk with dd + hexdump,
+## because the device has no image tools. Bytes 0-7 are the signature and
+## 16-23 are width and height, big-endian.
+png_dims() {
+    [ -f "$1" ] || return 1
+    sig=$(dd if="$1" bs=1 count=8 2>/dev/null | hexdump -v -e '8/1 "%02X"' 2>/dev/null)
+    [ "$sig" = "89504E470D0A1A0A" ] || return 1
+    h=$(dd if="$1" bs=1 skip=16 count=8 2>/dev/null | hexdump -v -e '8/1 "%02X"' 2>/dev/null)
+    [ ${#h} -eq 16 ] || return 1
+    w=$(printf '%d' "0x$(echo "$h" | cut -c1-8)" 2>/dev/null)
+    hh=$(printf '%d' "0x$(echo "$h" | cut -c9-16)" 2>/dev/null)
+    [ -n "$w" ] && [ -n "$hh" ] || return 1
+    echo "${w}x${hh}"
 }
 
 main() {
@@ -80,6 +98,17 @@ main() {
         n=$(basename "$f")
         t="$DST/$n"
         if [ ! -f "$t" ]; then log "skip  $n (blanket has no such screen)"; SKIP=$((SKIP+1)); continue; fi
+        ## On some firmware (5.13 on a Paperwhite 4, for one) bg_reboot.png is a
+        ## symlink to the shared bg_default.png. Copying through it would change
+        ## every screen that shares the default, so it is left alone.
+        if [ -L "$t" ]; then log "skip  $n (it is a symlink to $(readlink "$t" 2>/dev/null) on this firmware)"; SKIP=$((SKIP+1)); continue; fi
+        ## The artwork is drawn for one panel size. On a different panel it
+        ## would be cropped or float in a corner, so the sizes must match.
+        want=$(png_dims "$t"); have=$(png_dims "$f")
+        if [ -n "$want" ] && [ "$want" != "$have" ]; then
+            log "skip  $n (this device's screen art is $want, ours is $have - draw one that size and put it in kindlehub_theme/system/shutdown/)"
+            SKIP=$((SKIP+1)); continue
+        fi
         [ -f "$BAK/sys_shutdown_$n.orig" ] || cp "$t" "$BAK/sys_shutdown_$n.orig" 2>/dev/null
         if cp "$f" "$t" 2>/dev/null; then
             chmod 644 "$t" 2>/dev/null

@@ -51,15 +51,21 @@ for both before it writes anything.
 **It installed, I restarted, the bars are still there.**
 Check three things in `kindlehub_fullscreen.log`:
 
-- the installed md5 is `3472a42f133a8bd13a104386cb0a49a3`
+- the log says `RESULT installed` (on a Paperwhite 11 / 5.19.2 the installed
+  md5 is `3472a42f133a8bd13a104386cb0a49a3`; on other firmware the log says
+  *structurally verified* and records the md5 it produced)
 - the flag file `/mnt/us/kindlehub_fullscreen` exists
 - you actually restarted — the window manager only reads its Lua at startup
 
-**"File differs — refusing".**
-`/etc/xdg/awesome/lab126_application_layer.lua` is neither Amazon's original nor
-one of our patches. Something else has modified it, or your firmware is not
-5.19.2. The install stops rather than guessing; restore the file from your
-firmware or reinstall the firmware.
+If all three hold and this is not a Paperwhite 11 on 5.19.2, the patch applied
+but your firmware lays the browser out differently. Please open an issue with
+`kindlehub_fullscreen.log` and `kindlehub_theme_backup/fullscreen.info`; that
+is exactly the report that gets another model verified.
+
+**"installed on an untested firmware".**
+Not an error. The patch was built from your module and passed every structural
+check, but nobody has confirmed the result on your model yet. Restart and try
+the browser; report either way.
 
 **"KOReader (luajit) needed — aborted".**
 KOReader is not installed, so there is no `luajit` at `/mnt/us/koreader/luajit`.
@@ -67,11 +73,24 @@ The patched module is built from your device's own copy with it, and verified
 with it — a syntax error in a window-manager module leaves you with no UI.
 Install KOReader.
 
-**"Patch did not verify — aborted" or "anchor found 0 times".**
-The patcher could not place its lines in your module, or the result was not
-byte-for-byte the known-good file. Either the firmware is not 5.19.2 or the
-module has been changed by something else. Nothing was written; the log
-`kindlehub_fullscreen.log` shows which insertion failed.
+**"anchor found 0 times" or "anchor found 2 times".**
+The patcher could not find the single place its lines go in your module. Your
+firmware's window manager is laid out differently from every version this was
+checked against (5.11, 5.13, 5.19), or something else has already modified the
+file. Nothing was written; `kindlehub_fullscreen.log` shows which insertion
+failed. Open an issue with the log.
+
+**"Patch did not verify — aborted" or "structural check failed".**
+The patched module either did not parse with your device's luajit, or
+stripping KindleHub's lines back out did not reproduce your original, or (on
+5.19.2) it was not byte-for-byte the known-good file. Nothing was written.
+
+**"existing backup … is not this firmware's file".**
+`/mnt/us/kindlehub_theme_backup` holds a backup taken on a different firmware
+— usually because the Kindle was updated after KindleHub was installed.
+Restoring it later would put an old build's module on the new build, so the
+install refuses. Delete the backup folder over USB and run again; a fresh
+backup of the current file is taken.
 
 **"No pristine backup — refusing".**
 Your device holds the earlier first-attempt patch and the backup of the
@@ -88,6 +107,13 @@ The daemon is not running. Run **Browser Controls ON**, then read
 `kindlehub_browserd.log` — it logs the pid it started with, the input device it
 found, and the value of `preventScreenSaver`. That distinguishes "never started"
 from "started but not seeing events".
+
+**The daemon is running but taps are not seen (not a Paperwhite 11).**
+The log's `--- input devices ---` section lists every input device with its
+name, handlers and `KEY=` bitmap, and the line above it names the one chosen.
+The chooser prefers the device whose `KEY` bitmap has bit 116 (`KEY_POWER`),
+then a name containing *pwr* or *power*. If it picked the wrong one, open an
+issue with that section of the log; it is a one-line fix.
 
 If the log shows *"raw-event logging off"* more than once, several copies were
 running and fighting over the same input events. **Browser Controls OFF** stops
@@ -125,6 +151,25 @@ breaks the colour picker.
 **"skip <name> (no such icon on device)".**
 Also expected. Nothing is ever created that the app did not already ask for, so
 an icon the firmware does not have is skipped rather than added.
+
+**"this firmware has no /app/KPPMainApp/res".**
+Older firmware draws its UI from jars rather than SVG files, so there is
+nothing for the icon part to replace. It skips as a success.
+
+---
+
+## Restart artwork
+
+**"this device's screen art is WxH, ours is 1236x1648".**
+The art is drawn for a Paperwhite 11 panel and would be cropped on any other
+size, so it is skipped. Draw a PNG of the size the log names, leaving the
+middle band clear for Amazon's text overlay, and put it at
+`kindlehub_theme/system/shutdown/bg_reboot.png`; run **Restart Artwork ON**.
+
+**"it is a symlink to … on this firmware".**
+On some firmware `bg_reboot.png` is a link to the shared `bg_default.png`.
+Writing through it would change every screen that shares the default, so it is
+left alone.
 
 ---
 
