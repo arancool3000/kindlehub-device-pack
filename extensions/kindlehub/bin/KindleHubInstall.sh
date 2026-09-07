@@ -13,7 +13,7 @@
 ##   2. UI icons                229 SVGs under /app/KPPMainApp/res
 ##   3. Fullscreen browser      2 window-manager Lua modules, patched in place
 ##   4. Restart artwork         blanket's bg_reboot and friends
-##   5. Browser controls        power-button gestures + cover-only sleep
+##   5. Browser controls        power-button gestures + cover sleep
 ##   6. Swipe-back fix          stops overscroll jumping to the previous tab
 ##
 ## NOT installed by default, because it replaces /sbin/reboot and is the one
@@ -174,7 +174,8 @@ main() {
     echo "    backups      $(ls "$BAK" 2>/dev/null | wc -l) files in $BAK"
     echo
     echo "  RESTART now, then use KUAL > KindleHub > KindleHub Browser."
-    echo "    2 taps of the power button  show/hide the browser bar"
+    echo "    1 tap of the power button   sleep"
+    echo "    2 taps                      show/hide the browser bar"
     echo "    3 taps                      leave fullscreen"
     echo "    close the cover             sleep"
     echo

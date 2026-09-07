@@ -21,8 +21,8 @@ Everything it changes is backed up first and reversible from the same menu.
 | | |
 |---|---|
 | **Fullscreen browser** | The title bar and search bar are gone — the page uses the whole panel (1236×1648 on a Paperwhite 11). Not a "hide the bar" trick; the window manager is told the browser reserves no chrome, so the page is actually laid out full-height. |
-| **Power-button gestures** | **2 taps** show or hide the browser bar. **3 taps** leave fullscreen and go Home. A single tap no longer sleeps the device while the browser is up. |
-| **Cover-only sleep** | While the browser is running, the device sleeps when you close the magnetic cover and at no other time. |
+| **Power-button gestures** | **1 tap** sleeps, exactly as closing the cover does. **2 taps** show or hide the browser bar. **3 taps** leave fullscreen and go Home. |
+| **Cover sleep** | Closing the magnetic cover sleeps the device. There is no idle timeout while the browser is up — it sleeps when you say so, and not before. |
 | **229 UI icons** | Redrawn in one consistent line style across the home screen, library, reader menu, quick settings, browser chrome and settings. |
 | **Themed restart** | Your own artwork on the restart screen, and optionally your own restart sequence instead of Amazon's. |
 | **Swipe-back fix** | Overscrolling in the browser no longer jumps to the previous *tab*. |
@@ -53,7 +53,7 @@ nobody has yet pressed the button on that hardware. If you do, please
 |---|---|---|
 | Fullscreen browser | verified; result is byte-checked against the known-good module | patch built from *your* module and accepted only if every anchor is found exactly once, it parses, and stripping it back out gives your original byte for byte. The anchors are present in 5.11.1.1 (Paperwhite 2) and 5.13.2 (Paperwhite 4) firmware as well as 5.19.2 — untested on those devices |
 | Power-button gestures | verified | the power button's input device is found from `/proc/bus/input/devices` (KEY_POWER bit, then name), never assumed |
-| Cover-only sleep | verified | needs a magnetic cover sensor; harmless without one |
+| Cover sleep | verified | needs a magnetic cover sensor; harmless without one — one tap of the power button sleeps the device either way |
 | 229 UI icons | verified | only on firmware with the newer SVG-based UI (`/app/KPPMainApp/res`); older firmware is skipped with a note |
 | Restart artwork | verified | only if the device's screen art is 1236×1648 and not a symlink; otherwise skipped with a note saying what size to draw |
 | Our restart sequence | verified | generic; scales the art to the panel |

@@ -11,7 +11,7 @@
 ## running, and only then goes fullscreen. If the daemon will not start, it
 ## refuses to hide the bar rather than trapping you.
 ##
-##   1 tap   nothing (device stays awake)
+##   1 tap   sleep, exactly as closing the cover does
 ##   2 taps  show/hide the browser bar
 ##   3 taps  leave fullscreen, go Home
 ##   cover   closing the magnetic cover sleeps the device

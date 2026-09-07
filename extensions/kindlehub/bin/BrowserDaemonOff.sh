@@ -19,7 +19,7 @@ screen() {
 
 {
   echo "$(date '+%H:%M:%S') stopping browser controls"
-  rm -f "$FLAG" 2>/dev/null
+  rm -f "$FLAG" /var/tmp/kh_wake_pending 2>/dev/null
   ## The daemon notices the flag within ~30s; clear the block now so sleep works
   ## immediately rather than making the user wait for it.
   lipc-set-prop com.lab126.powerd preventScreenSaver 0 2>/dev/null

@@ -3,12 +3,21 @@
 # Author: repair
 # DontUseFBInk
 
-## Power-button gestures for the fullscreen browser, plus cover-only sleep.
+## Power-button gestures for the fullscreen browser, plus cover sleep.
 ##
-##   1 tap   nothing. The device stays awake indefinitely.
+##   1 tap   sleep, exactly as closing the cover does
 ##   2 taps  toggle the browser bar (fullscreen on/off)
 ##   3 taps  leave fullscreen and go Home
 ##   cover   closing the magnetic cover sleeps the device
+##
+## WHY ONE TAP HAS TO SWALLOW THE NEXT PRESS
+##   evdev hands every reader a copy of the key, which is what lets this daemon
+##   watch the button at all -- but it also means the press that WAKES the
+##   device is delivered here too. Left alone that press reads as a fresh 1-tap
+##   gesture and puts the device straight back to sleep, so the button could
+##   never wake it. After a button sleep the next press is therefore swallowed.
+##   If you open the cover instead, the cover watcher clears the marker so your
+##   next press is not eaten.
 ##
 ## WHY THE BUTTON CANNOT SIMPLY BE REBOUND
 ##   Taking /dev/input/event0 away from powerd needs an EVIOCGRAB ioctl, which
@@ -48,6 +57,7 @@
 
 FLAG=/mnt/us/kindlehub_browserd_on
 FSFLAG=/mnt/us/kindlehub_fullscreen
+WAKE=/var/tmp/kh_wake_pending   # set after a button sleep; the wake press is eaten
 LOG=/mnt/us/kindlehub_browserd.log
 DEV=/dev/input/event0            # replaced by find_power_input in main
 MAXSEC=86400
@@ -105,6 +115,7 @@ find_power_input() {
 
 cleanup() {
     lipc-set-prop com.lab126.powerd preventScreenSaver 0 2>/dev/null
+    rm -f "$WAKE" 2>/dev/null
     rm -f "$FLAG" 2>/dev/null
     log "stopped; preventScreenSaver restored to 0"
     sync
@@ -238,8 +249,8 @@ exit_fullscreen() {
 
 do_sleep() {
     ## Release the block just long enough for the real sleep to happen, then
-    ## re-arm, so the cover works while the button stays inert.
-    log "cover closed -> sleeping"
+    ## re-arm, so the next press or cover close still reaches us.
+    log "${1:-cover closed} -> sleeping"
     lipc-set-prop com.lab126.powerd preventScreenSaver 0 2>/dev/null
     sleep 1
     lipc-set-prop com.lab126.powerd powerButton 1 2>/dev/null
@@ -269,8 +280,12 @@ cover_loop() {
         sweep_dumps
         EV=$(timeout 30 lipc-wait-event -s 30 com.lab126.hal '*' 2>/dev/null | head -1)
         case "$EV" in
-            *magSensorClosed*) do_sleep ;;
-            *magSensorOpened*) log "cover opened" ;;
+            *magSensorClosed*) do_sleep "cover closed" ;;
+            *magSensorOpened*)
+                ## Woken by the cover, not the button, so there is no wake press
+                ## to swallow -- clear the marker or the next real press is eaten.
+                [ -f "$WAKE" ] && { rm -f "$WAKE"; log "cover opened (wake press no longer expected)"; } \
+                               || log "cover opened" ;;
         esac
         sleep 1                     # never spin, even if the wait returns at once
     done
@@ -290,7 +305,13 @@ button_loop() {
             while read_press "$GAP"; do n=$((n+1)); [ "$n" -ge 5 ] && break; done
             log "gesture: $n tap(s)"
             case "$n" in
-                1) : ;;                      # deliberately nothing: stays awake
+                1) do_sleep "1 tap"
+                   : > "$WAKE"
+                   while [ -f "$FLAG" ] && [ -f "$WAKE" ]; do
+                       if read_press 30; then
+                           rm -f "$WAKE"; log "swallowed the wake press"
+                       fi
+                   done ;;
                 2) toggle_bar ;;
                 3) exit_fullscreen ;;
                 *) log "ignoring $n taps" ;;
@@ -328,10 +349,10 @@ main() {
 
     screen "                                        " 2
     screen "  BROWSER CONTROLS ON                   " 2
-    screen "  1 tap  = nothing (stays awake)        " 4
+    screen "  1 tap  = sleep                        " 4
     screen "  2 taps = show/hide the browser bar    " 5
     screen "  3 taps = leave fullscreen             " 6
-    screen "  close the cover to sleep              " 8
+    screen "  or close the cover to sleep           " 8
 
     cover_loop &
     COVER_PID=$!

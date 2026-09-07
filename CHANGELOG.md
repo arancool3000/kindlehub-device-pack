@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+**One tap of the power button now sleeps the device**, exactly as closing the
+cover does. It previously did nothing on purpose, so the device stayed awake
+until the cover was closed; sleeping now needs one press rather than a cover.
+Two and three taps are unchanged.
+
+- The press that *wakes* the device is swallowed. evdev hands every reader a
+  copy of the key, so the wake press arrives at the daemon too — left alone it
+  reads as a fresh 1-tap gesture and puts the device straight back to sleep,
+  and the button could never wake it
+- Waking by opening the cover clears that marker instead, so the next real
+  press is not eaten
+- `do_sleep` now records what triggered it, so the log distinguishes a button
+  sleep from a cover sleep
+
 ## 1.1.0
 
 **Runs on any jailbroken Kindle, not only a Paperwhite 11 on 5.19.2.** The
