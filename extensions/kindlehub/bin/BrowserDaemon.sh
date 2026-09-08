@@ -7,7 +7,7 @@
 ##
 ##   1 tap   sleep, exactly as closing the cover does
 ##   2 taps  toggle the browser bar (fullscreen on/off)
-##   3 taps  leave fullscreen and go Home
+##   3 taps  toggle fullscreen: leave to Home, or bring the browser back
 ##   cover   closing the magnetic cover sleeps the device
 ##
 ## WHY ONE TAP HAS TO SWALLOW THE NEXT PRESS
@@ -58,6 +58,7 @@
 FLAG=/mnt/us/kindlehub_browserd_on
 FSFLAG=/mnt/us/kindlehub_fullscreen
 WAKE=/var/tmp/kh_wake_pending   # set after a button sleep; the wake press is eaten
+PIDF=/var/tmp/kh_browserd.pid   # real pid of the running daemon, written by the parent
 LOG=/mnt/us/kindlehub_browserd.log
 DEV=/dev/input/event0            # replaced by find_power_input in main
 MAXSEC=86400
@@ -113,13 +114,35 @@ find_power_input() {
     ' /proc/bus/input/devices 2>/dev/null
 }
 
+## MYPID is this block's REAL pid. $$ is the parent's and the parent has already
+## exited, so it cannot be used here -- but the redirection below is performed by
+## this subshell, so /proc/self resolves to us.
+read MYPID _ < /proc/self/stat 2>/dev/null
+
+CLEANED=0
 cleanup() {
-    lipc-set-prop com.lab126.powerd preventScreenSaver 0 2>/dev/null
-    rm -f "$WAKE" 2>/dev/null
-    rm -f "$FLAG" 2>/dev/null
-    log "stopped; preventScreenSaver restored to 0"
+    [ "$CLEANED" = "1" ] && return 0
+    CLEANED=1
+    ## Only tear down the shared state if we still OWN it. A daemon that is being
+    ## replaced can take up to 30s to notice its TERM (it sits in a blocking dd),
+    ## by which time the new one has already claimed the flag -- clearing it here
+    ## unconditionally deleted the new daemon's flag and dropped
+    ## preventScreenSaver, leaving the user with no daemon and no explanation.
+    ## If /proc/self/stat could not be read we cannot prove ownership. Assume we
+    ## ARE the owner in that case: a lone daemon that fails to restore
+    ## preventScreenSaver leaves the power button dead until a reboot, which is
+    ## worse and hits everyone, whereas clobbering only matters when a newer
+    ## daemon exists at all.
+    if [ -z "$MYPID" ] || [ "$(cat "$PIDF" 2>/dev/null)" = "$MYPID" ]; then
+        lipc-set-prop com.lab126.powerd preventScreenSaver 0 2>/dev/null
+        rm -f "$WAKE" "$FLAG" "$PIDF" 2>/dev/null
+        log "stopped; preventScreenSaver restored to 0"
+    else
+        log "stopped (pid $MYPID); a newer daemon owns the flag - left alone"
+    fi
     sync
 }
+
 
 ## --- one power-button press, or non-zero if none within $1 seconds ---
 ## Deliberately tolerant: it matches ANY key-DOWN on this device rather than a
@@ -202,6 +225,17 @@ refresh_browser() {
     done
     log "old browser gone after ${i}s"
 
+    ## The history DB is written lazily, so its newest row can be a page you
+    ## left ages ago -- which is why a toggle could throw you back to an old
+    ## site. Record every candidate once per toggle so the right source can be
+    ## chosen from evidence rather than guessed at.
+    log "url sources: history=$(current_url)"
+    log "  history db mtime: $(ls -l "$BDB" 2>/dev/null | awk '{print $6, $7, $8}')"
+    log "  winmgr title: $(lipc-get-prop com.lab126.winmgr getActiveAppTitle 2>/dev/null)"
+    for kp in currentURL currentUrl url location; do
+        kv=$(lipc-get-prop com.lab126.browser "$kp" 2>/dev/null)
+        [ -n "$kv" ] && log "  browser.$kp = $kv"
+    done
     URL=$(current_url)
     log "reopening at $URL"
     i=1
@@ -240,11 +274,25 @@ toggle_bar() {
     refresh_browser
 }
 
-exit_fullscreen() {
-    rm -f "$FSFLAG" 2>/dev/null; sync
-    log "3 taps -> leaving fullscreen, going Home"
-    screen "  leaving fullscreen                " 2
-    lipc-set-prop com.lab126.appmgrd start app://com.lab126.KPPMainApp 2>/dev/null
+## 3 taps is the way IN and the way OUT of the fullscreen browser. 2 taps
+## toggles the bar while you stay in it; 3 taps leaves it entirely, and pressing
+## 3 again brings it back rather than leaving you to find KUAL.
+toggle_fullscreen() {
+    ## Branch on whether the browser is actually up, NOT on FSFLAG. FSFLAG means
+    ## "bar hidden" and 2 taps clears it while you are still in the browser, so
+    ## keying off it made 3 taps re-open the browser you were already in.
+    if browser_up; then
+        rm -f "$FSFLAG" 2>/dev/null; sync
+        log "3 taps -> leaving fullscreen, going Home"
+        screen "  leaving fullscreen                " 2
+        lipc-set-prop com.lab126.appmgrd start app://com.lab126.KPPMainApp 2>/dev/null
+    else
+        touch "$FSFLAG"; sync
+        URL=$(current_url)
+        log "3 taps -> fullscreen back on, opening at $URL"
+        screen "  fullscreen                        " 2
+        lipc-set-prop com.lab126.appmgrd start "app://com.lab126.browser?view=$URL" 2>/dev/null
+    fi
 }
 
 do_sleep() {
@@ -313,7 +361,7 @@ button_loop() {
                        fi
                    done ;;
                 2) toggle_bar ;;
-                3) exit_fullscreen ;;
+                3) toggle_fullscreen ;;
                 *) log "ignoring $n taps" ;;
             esac
         else
@@ -329,15 +377,13 @@ main() {
     log "power button device: $DEV"
     [ -e "$DEV" ] || { log "ABORT no $DEV"; screen "No input device" 4; return 1; }
 
-    ## Liveness is tested by looking for a live daemon PROCESS, never by a pid
-    ## recorded in the flag: inside "{ ...; } &" the $$ is the parent shell,
-    ## which exits at once, and the reused pid then made kill -0 succeed so the
-    ## daemon refused to start every time. If an older copy is somehow still
-    ## running, take over from it rather than refusing.
-    for oldp in $(ps 2>/dev/null | grep '[B]rowserDaemon' | awk '{print $1}'); do
-        [ "$oldp" = "$$" ] && continue
-        kill "$oldp" 2>/dev/null && log "stopped an older daemon (pid $oldp)"
-    done
+    ## Whether an older daemon was stopped is decided in the PARENT, before this
+    ## block is backgrounded -- see the launcher at the end of the file. It is
+    ## reported here so it lands in the freshly truncated log.
+    log "${TAKEOVER:-previous daemon: not checked}"
+    ## Proves /proc/self resolved to this block and not to the exited parent.
+    ## If this is empty, cleanup falls back to unconditional teardown.
+    log "my pid (from /proc/self/stat): ${MYPID:-UNREADABLE}"
     ## Record the input devices once, so which eventN is the power button is a
     ## fact in the log rather than something inferred from an old note.
     log "--- input devices (chosen: $DEV) ---"
@@ -351,7 +397,7 @@ main() {
     screen "  BROWSER CONTROLS ON                   " 2
     screen "  1 tap  = sleep                        " 4
     screen "  2 taps = show/hide the browser bar    " 5
-    screen "  3 taps = leave fullscreen             " 6
+    screen "  3 taps = fullscreen in / out          " 6
     screen "  or close the cover to sleep           " 8
 
     cover_loop &
@@ -363,6 +409,59 @@ main() {
 ## Launch exactly as the version that demonstrably worked did: a background
 ## block. Do not "improve" this without evidence -- a setsid re-exec was tried
 ## and was not the problem.
+##
+## STOPPING THE PREVIOUS DAEMON HAS TO HAPPEN HERE, IN THE PARENT.
+##   $$ does not change inside "{ ...; } &" -- it stays the parent's pid, and
+##   the parent exits immediately. So a guard written inside the block can
+##   neither identify itself nor be identified, which is why the old
+##   "ps | grep BrowserDaemon" take-over never once fired and four daemons
+##   ended up reading the same power button and each relaunching the browser.
+##   $! here is the real pid of the block, so it is recorded and reused.
+OLD=$(cat "$PIDF" 2>/dev/null)
+if [ -n "$OLD" ] && kill -0 "$OLD" 2>/dev/null; then
+    ## Pids get reused, so confirm it is ours before killing anything.
+    OLDCMD=$(tr '\0' ' ' < "/proc/$OLD/cmdline" 2>/dev/null)
+    if echo "$OLDCMD" | grep -q 'BrowserDaemon'; then
+        ## The grace period MUST exceed the longest blocking read (timeout 30 in
+        ## read_press and in cover_loop): a shell defers a TERM trap until the
+        ## current foreground command returns, so a 10s wait ended before the old
+        ## daemon had even noticed, and the parent started a second one.
+        kill "$OLD" 2>/dev/null
+        i=0
+        while [ "$i" -lt 35 ] && kill -0 "$OLD" 2>/dev/null; do sleep 1; i=$((i+1)); done
+        if kill -0 "$OLD" 2>/dev/null; then
+            kill -9 "$OLD" 2>/dev/null
+            j=0
+            while [ "$j" -lt 5 ] && kill -0 "$OLD" 2>/dev/null; do sleep 1; j=$((j+1)); done
+            TAKEOVER="previous daemon (pid $OLD) ignored TERM for ${i}s, killed it"
+        else
+            TAKEOVER="stopped the previous daemon (pid $OLD) after ${i}s"
+        fi
+    else
+        ## Report the cmdline verbatim. If the launcher ever stops putting the
+        ## script name in argv this check would silently never match, and the
+        ## duplicate daemons would come straight back -- the log must show it.
+        TAKEOVER="stale pidfile: pid $OLD is [$OLDCMD], not ours"
+    fi
+else
+    TAKEOVER="no previous daemon was running"
+fi
+
+## Sweep any daemon the pidfile does not know about -- orphans from before the
+## pidfile existed, or a cover watcher left behind by a kill -9. Safe here and
+## ONLY here: the new block does not exist yet, so nothing of ours is running.
+## $$ IS valid in this parent (it is the real shell); it is only inside
+## "{ ...; } &" that it silently becomes the parent's and matches nothing.
+## The pattern is anchored to the .sh so it cannot match BrowserDaemonOff.sh.
+SWEPT=0
+for p in $(ps 2>/dev/null | grep '[B]rowserDaemon\.sh' | awk '{print $1}'); do
+    [ "$p" = "$$" ] && continue
+    kill -9 "$p" 2>/dev/null && SWEPT=$((SWEPT+1))
+done
+[ "$SWEPT" -gt 0 ] && TAKEOVER="$TAKEOVER; swept $SWEPT orphaned daemon process(es)"
+export TAKEOVER
+
 : > "$LOG" 2>/dev/null
-{ trap cleanup EXIT INT TERM; main; cleanup; } >> "$LOG" 2>&1 &
+{ trap cleanup EXIT; trap 'cleanup; exit 143' INT TERM; main; cleanup; } >> "$LOG" 2>&1 &
+echo $! > "$PIDF" 2>/dev/null
 exit 0

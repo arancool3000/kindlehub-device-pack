@@ -100,7 +100,7 @@ main() {
     ## is the parent shell's, which exits at once, so the daemon and the
     ## launcher both test for a live PROCESS instead. Do the same here.
     F=/mnt/us/kindlehub_browserd_on
-    DP=$(ps 2>/dev/null | grep '[B]rowserDaemon' | awk '{print $1}' | head -1)
+    DP=$(ps 2>/dev/null | grep '[B]rowserDaemon\.sh' | awk '{print $1}' | head -1)
     if [ -n "$DP" ]; then
         [ -f "$F" ] && ok "daemon running as pid $DP" \
                     || warn "daemon running (pid $DP) but its flag is gone - it will stop itself within 30s"

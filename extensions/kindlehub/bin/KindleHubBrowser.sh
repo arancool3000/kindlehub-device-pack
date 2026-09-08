@@ -13,7 +13,7 @@
 ##
 ##   1 tap   sleep, exactly as closing the cover does
 ##   2 taps  show/hide the browser bar
-##   3 taps  leave fullscreen, go Home
+##   3 taps  toggle fullscreen: leave to Home, or bring the browser back
 ##   cover   closing the magnetic cover sleeps the device
 ##
 ## Escape hatch that needs no device access at all: delete
@@ -48,7 +48,7 @@ main() {
     ## the parent shell's, which exits immediately; once reused, the check said
     ## "already running" and the daemon was never started.
     ALIVE=0
-    ps 2>/dev/null | grep -q '[B]rowserDaemon' && ALIVE=1
+    ps 2>/dev/null | grep -q '[B]rowserDaemon\.sh' && ALIVE=1
     if [ "$ALIVE" = "1" ]; then
         log "controls already running"
     else
@@ -79,7 +79,7 @@ main() {
     touch "$FSFLAG"; sync
     log "fullscreen flag set"
     screen "                                        " 4
-    screen "  2 taps = bar    3 taps = exit          " 4
+    screen "  2 taps = bar   3 taps = in/out        " 4
 
     ## ---- 3. open ----
     lipc-set-prop com.lab126.appmgrd start "app://com.lab126.browser?view=$SITE" 2>/dev/null

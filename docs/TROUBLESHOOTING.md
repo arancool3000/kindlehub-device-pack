@@ -102,7 +102,7 @@ proceed. Run `Fullscreen OFF` if a backup exists elsewhere, or restore
 
 ## Browser controls
 
-**2 taps and 3 taps do nothing, and one tap sleeps the device.**
+**2 taps and 3 taps do nothing.**
 The daemon is not running. Run **Browser Controls ON**, then read
 `kindlehub_browserd.log` — it logs the pid it started with, the input device it
 found, and the value of `preventScreenSaver`. That distinguishes "never started"

@@ -21,7 +21,7 @@ Everything it changes is backed up first and reversible from the same menu.
 | | |
 |---|---|
 | **Fullscreen browser** | The title bar and search bar are gone — the page uses the whole panel (1236×1648 on a Paperwhite 11). Not a "hide the bar" trick; the window manager is told the browser reserves no chrome, so the page is actually laid out full-height. |
-| **Power-button gestures** | **1 tap** sleeps, exactly as closing the cover does. **2 taps** show or hide the browser bar. **3 taps** leave fullscreen and go Home. |
+| **Power-button gestures** | **1 tap** sleeps, exactly as closing the cover does. **2 taps** show or hide the browser bar. **3 taps** go in and out of the fullscreen browser. |
 | **Cover sleep** | Closing the magnetic cover sleeps the device. There is no idle timeout while the browser is up — it sleeps when you say so, and not before. |
 | **229 UI icons** | Redrawn in one consistent line style across the home screen, library, reader menu, quick settings, browser chrome and settings. |
 | **Themed restart** | Your own artwork on the restart screen, and optionally your own restart sequence instead of Amazon's. |
@@ -89,8 +89,9 @@ did not start — so you can never end up fullscreen with no way out.
 
 | Gesture | What it does |
 |---|---|
-| 2 taps of the power button | show / hide the browser bar |
-| 3 taps | leave fullscreen and go Home |
+| 1 tap of the power button | sleep, exactly as closing the cover does |
+| 2 taps | show / hide the browser bar |
+| 3 taps | leave fullscreen and go Home — press 3 again to bring it straight back |
 | close the cover | sleep |
 
 The Control Centre is suppressed while fullscreen so a stray swipe from the top

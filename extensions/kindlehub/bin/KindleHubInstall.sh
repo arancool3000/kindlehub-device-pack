@@ -176,7 +176,7 @@ main() {
     echo "  RESTART now, then use KUAL > KindleHub > KindleHub Browser."
     echo "    1 tap of the power button   sleep"
     echo "    2 taps                      show/hide the browser bar"
-    echo "    3 taps                      leave fullscreen"
+    echo "    3 taps                      fullscreen in / out"
     echo "    close the cover             sleep"
     echo
     echo "  To undo anything: KUAL > KindleHub > Undo."

@@ -24,7 +24,25 @@ screen() {
   ## immediately rather than making the user wait for it.
   lipc-set-prop com.lab126.powerd preventScreenSaver 0 2>/dev/null
   sleep 2
-  for p in $(ps 2>/dev/null | grep '[B]rowserDaemon' | awk '{print $1}'); do kill "$p" 2>/dev/null; done
+  ## Kill by the recorded pid first, confirming via /proc that it is really ours.
+  ## Then wait: the daemon sits in a 30s blocking read and a shell defers a TERM
+  ## trap until that returns, so removing the pidfile immediately -- as this used
+  ## to -- left a live daemon that no later take-over could find.
+  OLD=$(cat /var/tmp/kh_browserd.pid 2>/dev/null)
+  if [ -n "$OLD" ] && kill -0 "$OLD" 2>/dev/null; then
+      if tr '\0' ' ' < "/proc/$OLD/cmdline" 2>/dev/null | grep -q 'BrowserDaemon'; then
+          kill "$OLD" 2>/dev/null
+          i=0
+          while [ "$i" -lt 35 ] && kill -0 "$OLD" 2>/dev/null; do sleep 1; i=$((i+1)); done
+          kill -0 "$OLD" 2>/dev/null && { kill -9 "$OLD" 2>/dev/null; sleep 2
+              echo "$(date '+%H:%M:%S') pid $OLD ignored TERM for ${i}s, killed it"; } \
+            || echo "$(date '+%H:%M:%S') pid $OLD stopped after ${i}s"
+      fi
+  fi
+  ## Anchored to the .sh: the bare word also matches THIS script
+  ## (BrowserDaemonOff.sh), and this block would have signalled itself.
+  for p in $(ps 2>/dev/null | grep '[B]rowserDaemon\.sh' | awk '{print $1}'); do kill -9 "$p" 2>/dev/null; done
+  rm -f /var/tmp/kh_browserd.pid 2>/dev/null
   echo "$(date '+%H:%M:%S') preventScreenSaver = $(lipc-get-prop com.lab126.powerd preventScreenSaver 2>/dev/null)"
   screen "                                        " 2
   screen "  BROWSER CONTROLS OFF                   " 2

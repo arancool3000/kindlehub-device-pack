@@ -109,7 +109,7 @@ main() {
         screen "  SWIPE-BACK DISABLED                   " 3
         screen "  close and reopen the browser          " 5
         echo; echo "  Flags only take effect at browser launch, so close and"
-        echo "  reopen it (3 taps then reopen, or just restart)."
+        echo "  reopen it (3 taps out, 3 taps back in, or just restart)."
     else
         log "FAIL verification after write"
         screen "Verification failed - see log" 4

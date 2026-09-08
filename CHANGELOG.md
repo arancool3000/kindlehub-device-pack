@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+**Three taps now toggles fullscreen instead of only leaving it.** In fullscreen
+it still goes Home; out of fullscreen it brings the browser straight back, so
+leaving no longer means finding KUAL to get back in.
+
+**Only one daemon can run at a time — and until now, none of the guards worked.**
+`$$` does not change inside `{ ...; } &`, so it was always the parent's pid and
+the parent had already exited. The `ps | grep BrowserDaemon` take-over therefore
+never matched once, and four daemons ended up reading the same power button and
+each relaunching the browser on every gesture. The take-over now runs in the
+parent, where `$!` is the block's real pid, and records it in
+`/var/tmp/kh_browserd.pid`. A pid is only killed if `/proc/<pid>/cmdline`
+confirms it is ours, and the cmdline is logged when it is not.
+
+**The reopen URL is now logged with its alternatives.** A toggle reopens at the
+newest row of the browser's history DB, which is written lazily and can be a
+page you left long ago — the reported symptom of landing back on an old site.
+Every candidate source is recorded once per toggle so the right one can be
+chosen from evidence.
+
 **One tap of the power button now sleeps the device**, exactly as closing the
 cover does. It previously did nothing on purpose, so the device stayed awake
 until the cover was closed; sleeping now needs one press rather than a cover.

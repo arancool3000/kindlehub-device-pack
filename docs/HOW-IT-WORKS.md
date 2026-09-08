@@ -136,10 +136,36 @@ The button is a raw input device, not something lipc exposes:
 ```
 
 The daemon reads it with `dd bs=16 count=1` under a `timeout`, counts presses
-inside a window, and acts on 2 or 3. While the browser is up it holds
-`preventScreenSaver` so a single press does not sleep the device. Which
-`eventN` to read is decided at start from `/proc/bus/input/devices` (see
-*Other Kindles* above), never assumed.
+inside a one-second window, and acts on 1, 2 or 3. Which `eventN` to read is
+decided at start from `/proc/bus/input/devices` (see *Other Kindles* above),
+never assumed.
+
+**The button cannot simply be rebound.** Taking the input device away from
+`powerd` needs an `EVIOCGRAB` ioctl, which shell cannot issue, and would mean
+racing `powerd` for the same key. So it is inverted: `preventScreenSaver=1`
+stops *anything* sleeping the device — the power button included — and the
+daemon watches the events itself and decides. Sleeping is therefore
+synthesised, not passed through: drop the block, set `powerButton 1`, wait,
+re-arm. One tap and the cover run the same function.
+
+**The wake press has to be eaten.** evdev hands every reader a copy of the key,
+which is what makes the daemon possible at all — but the press that *wakes* the
+device is delivered to it too. Left alone it reads as a fresh 1-tap gesture and
+sleeps the device again, so the button could never wake it. After a button
+sleep the daemon marks `/var/tmp/kh_wake_pending` and swallows the next press;
+waking by cover clears the marker instead.
+
+**Only one daemon may run, and `$$` cannot enforce it.** The script backgrounds
+itself as `{ ...; } &`, and `$$` does not change in a subshell — it stays the
+parent's pid, and the parent exits immediately. A guard written inside the block
+can therefore neither identify itself nor find its predecessor, which is why an
+earlier `ps | grep BrowserDaemon` take-over never once fired and four daemons
+ended up sharing one power button. The take-over now runs in the **parent**,
+where `$!` is the block's real pid, recorded in `/var/tmp/kh_browserd.pid`; the
+block learns its own pid from `/proc/self/stat`, and only tears down the shared
+flag if that pid still owns it. The grace period is longer than the 30-second
+blocking read, because a shell defers a `TERM` trap until the current foreground
+command returns.
 
 **Cover detection is a magnet, not power.** The cover reports through
 `com.lab126.hal` as `magSensorClosed` / `magSensorOpened`. `powerd` never
