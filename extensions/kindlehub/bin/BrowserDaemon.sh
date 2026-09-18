@@ -186,9 +186,25 @@ browser_up() {
 ## KPPBrowser.db holds bookmark/history/setting tables; the column name is not
 ## documented anywhere, so try the likely spellings and fall back to the site
 ## rather than guessing wrong and reopening nothing.
+## ORDER BY ROWID IS NOT "MOST RECENTLY VISITED".
+##   Measured on the device: the history DB's mtime was current to the minute,
+##   yet the newest rowid was a site last opened days earlier, while the page
+##   actually on screen had been opened seconds before. A history row is updated
+##   in place when you revisit a URL, so rowid is FIRST-SEEN order. Ordering by a
+##   last-visited timestamp is what gives the page you are really on -- that is
+##   why the bar toggle kept throwing you back to an old site.
+##   The column name differs between builds, so the likely ones are tried in
+##   turn and the first that yields an http(s) URL wins. A build with none of
+##   them falls back to rowid, and then to $SITE, exactly as before.
 current_url() {
     if command -v sqlite3 >/dev/null 2>&1 && [ -f "$BDB" ]; then
-        for q in "select url from history order by rowid desc limit 1;" \
+        for q in "select url from history order by lastVisited desc limit 1;" \
+                 "select url from history order by last_visit_time desc limit 1;" \
+                 "select url from history order by lastVisitTime desc limit 1;" \
+                 "select url from history order by visitTime desc limit 1;" \
+                 "select url from history order by timestamp desc limit 1;" \
+                 "select url from history order by date desc limit 1;" \
+                 "select url from history order by rowid desc limit 1;" \
                  "select URL from history order by rowid desc limit 1;" \
                  "select url from bookmark order by rowid desc limit 1;"; do
             u=$(sqlite3 "$BDB" "$q" 2>/dev/null | head -1)
@@ -323,20 +339,47 @@ sweep_dumps() {
 }
 
 ## ---- cover watcher, background ----
-cover_loop() {
-    while [ -f "$FLAG" ]; do
-        sweep_dumps
-        EV=$(timeout 30 lipc-wait-event -s 30 com.lab126.hal '*' 2>/dev/null | head -1)
-        case "$EV" in
+## Dispatch one line from the hal event stream.
+cover_event() {
+    case "$1" in
             *magSensorClosed*) do_sleep "cover closed" ;;
-            *magSensorOpened*)
-                ## Woken by the cover, not the button, so there is no wake press
-                ## to swallow -- clear the marker or the next real press is eaten.
-                [ -f "$WAKE" ] && { rm -f "$WAKE"; log "cover opened (wake press no longer expected)"; } \
-                               || log "cover opened" ;;
-        esac
-        sleep 1                     # never spin, even if the wait returns at once
-    done
+        *magSensorOpened*)
+            ## Woken by the cover, not the button, so there is no wake press to
+            ## swallow -- clear the marker or the next real press is eaten.
+            [ -f "$WAKE" ] && { rm -f "$WAKE"; log "cover opened (wake press no longer expected)"; } \
+                           || log "cover opened" ;;
+    esac
+}
+
+## WHY THE COVER SOMETIMES DID NOTHING
+##   lipc-wait-event only reports events that arrive WHILE IT IS RUNNING. The
+##   old loop ran it for 30s, took the first line, slept a second and started it
+##   again -- so every event that landed in the gap between two waits was
+##   silently dropped, and closing the cover in that window did nothing at all.
+##   do_sleep itself takes about four seconds, widening the gap every time it
+##   fires. One long-lived subscription has no gap.
+##
+##   Whether this build's lipc-wait-event can stream is CHECKED, not assumed: if
+##   it has no monitor flag the old polling loop is used instead, and the log
+##   says which. Getting this wrong silently would cost the cover entirely,
+##   which is worse than the gap it fixes.
+cover_loop() {
+    if lipc-wait-event --help 2>&1 | grep -q -- '-m'; then
+        log "cover: streaming (lipc-wait-event -m)"
+        lipc-wait-event -m -s 0 com.lab126.hal '*' 2>/dev/null | while read -r EV; do
+            [ -f "$FLAG" ] || break
+            cover_event "$EV"
+            sweep_dumps
+        done
+    else
+        log "cover: no -m flag on this build, polling in 30s windows (events between windows are missed)"
+        while [ -f "$FLAG" ]; do
+            sweep_dumps
+            EV=$(timeout 30 lipc-wait-event -s 30 com.lab126.hal '*' 2>/dev/null | head -1)
+            [ -n "$EV" ] && cover_event "$EV"
+            sleep 1                 # never spin, even if the wait returns at once
+        done
+    fi
 }
 
 ## ---- button watcher, foreground ----
@@ -384,6 +427,21 @@ main() {
     ## Proves /proc/self resolved to this block and not to the exited parent.
     ## If this is empty, cleanup falls back to unconditional teardown.
     log "my pid (from /proc/self/stat): ${MYPID:-UNREADABLE}"
+
+    ## The reopen URL comes from the browser's history table, ordered by rowid.
+    ## The device log proves that is WRONG: the DB is written live (its mtime is
+    ## current) yet the newest rowid was a site visited days earlier. A history
+    ## row is almost certainly updated in place on a repeat visit, so rowid is
+    ## first-seen order, not last-visited. Dump the schema once so the right
+    ## column can be used instead of another guess.
+    if command -v sqlite3 >/dev/null 2>&1 && [ -f "$BDB" ]; then
+        log "--- browser history schema ---"
+        sqlite3 "$BDB" ".schema" 2>/dev/null | head -20 >> "$LOG" 2>/dev/null
+        log "--- newest 3 by rowid ---"
+        sqlite3 "$BDB" "select rowid,* from history order by rowid desc limit 3;" 2>/dev/null >> "$LOG" 2>/dev/null
+    else
+        log "no sqlite3 or no $BDB - reopen URL falls back to $SITE"
+    fi
     ## Record the input devices once, so which eventN is the power button is a
     ## fact in the log rather than something inferred from an old note.
     log "--- input devices (chosen: $DEV) ---"

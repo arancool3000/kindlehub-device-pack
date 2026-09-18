@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+**Closing the cover now works every time.** `lipc-wait-event` only reports
+events that arrive while it is running, and the cover watcher ran it for 30
+seconds, took one line, slept, and started it again — so anything that landed
+in the gap was silently dropped, which is why the cover sometimes did nothing.
+It now holds one long-lived subscription. Whether this build's
+`lipc-wait-event` can stream is checked rather than assumed; a build without
+the monitor flag keeps the old polling loop and the log says so.
+
+**The bar toggle no longer throws you back to an old site.** The reopen URL
+came from the history table ordered by `rowid`. Measured on the device, that is
+wrong: the DB's mtime was current to the minute, yet the newest rowid was a
+site last opened days earlier while the page on screen had been opened seconds
+before — a row is updated in place on a revisit, so `rowid` is first-seen
+order. It now orders by a last-visited timestamp, trying the likely column
+names and falling back to the old behaviour on a build that has none.
+
+**The daemon dumps the history schema once at startup**, so the column above
+can be confirmed rather than inferred.
+
 **Three taps now toggles fullscreen instead of only leaving it.** In fullscreen
 it still goes Home; out of fullscreen it brings the browser straight back, so
 leaving no longer means finding KUAL to get back in.
