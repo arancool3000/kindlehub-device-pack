@@ -76,6 +76,22 @@ main() {
     log "controls running"
 
     ## ---- 2. now it is safe to hide the bar ----
+    ## The flag alone does NOTHING if the window-manager module is not patched.
+    ## Twice now the flag has been set while the module was Amazon's original --
+    ## once because Fullscreen OFF had been run and never re-run -- and the
+    ## browser opened with its bars and no explanation. Check, and say so.
+    WM=/etc/xdg/awesome/lab126_application_layer.lua
+    if ! grep -q 'kindlehub_fullscreen' "$WM" 2>/dev/null; then
+        log "ABORT window manager is not patched - fullscreen would do nothing"
+        screen "                                        " 4
+        screen "  FULLSCREEN IS NOT INSTALLED           " 3
+        screen "  KUAL > KindleHub > Parts >            " 5
+        screen "       Fullscreen ON, then restart      " 6
+        rm -f "$FSFLAG" 2>/dev/null; sync
+        lipc-set-prop com.lab126.appmgrd start "app://com.lab126.browser?view=$SITE" 2>/dev/null
+        return 1
+    fi
+
     touch "$FSFLAG"; sync
     log "fullscreen flag set"
     screen "                                        " 4

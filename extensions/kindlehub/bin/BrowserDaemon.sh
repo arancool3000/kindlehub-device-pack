@@ -198,7 +198,8 @@ browser_up() {
 ##   them falls back to rowid, and then to $SITE, exactly as before.
 current_url() {
     if command -v sqlite3 >/dev/null 2>&1 && [ -f "$BDB" ]; then
-        for q in "select url from history order by lastVisited desc limit 1;" \
+        for q in "select url from history order by updated_dt desc limit 1;" \
+                 "select url from history order by lastVisited desc limit 1;" \
                  "select url from history order by last_visit_time desc limit 1;" \
                  "select url from history order by lastVisitTime desc limit 1;" \
                  "select url from history order by visitTime desc limit 1;" \
