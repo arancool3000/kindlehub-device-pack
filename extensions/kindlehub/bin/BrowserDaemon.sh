@@ -114,10 +114,13 @@ find_power_input() {
     ' /proc/bus/input/devices 2>/dev/null
 }
 
-## MYPID is this block's REAL pid. $$ is the parent's and the parent has already
-## exited, so it cannot be used here -- but the redirection below is performed by
-## this subshell, so /proc/self resolves to us.
-read MYPID _ < /proc/self/stat 2>/dev/null
+## MYPID is the backgrounded block's REAL pid, and it is read INSIDE that block
+## (see the launcher at the end). Read here at the top level it gave the PARENT's
+## pid -- measured on the device: top level 32380, inside the block 32381 = $! --
+## so cleanup never recognised itself as the owner, and a daemon that stopped on
+## its own (the 24h limit) left preventScreenSaver=1 with nothing running to
+## clear it. The Kindle then could not be put to sleep at all.
+MYPID=""
 
 CLEANED=0
 cleanup() {
@@ -521,6 +524,6 @@ done
 export TAKEOVER
 
 : > "$LOG" 2>/dev/null
-{ trap cleanup EXIT; trap 'cleanup; exit 143' INT TERM; main; cleanup; } >> "$LOG" 2>&1 &
+{ read MYPID _ < /proc/self/stat 2>/dev/null; trap cleanup EXIT; trap 'cleanup; exit 143' INT TERM; main; cleanup; } >> "$LOG" 2>&1 &
 echo $! > "$PIDF" 2>/dev/null
 exit 0
